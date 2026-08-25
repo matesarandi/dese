@@ -19,6 +19,8 @@ class ModelEditorPage(ttk.Frame):
         self.model_changed_callback = model_changed_callback
         self.model_data = None
         self.selected_entity = None
+        self.input_count = 0
+        self.output_count = 0
         self.property_entries = {}
         self.load_model()
         self.create_widgets()
@@ -266,7 +268,7 @@ class ModelEditorPage(ttk.Frame):
             self.property_entries[property_name] = entry
 
     def update_connection_editor(self):
-        # Clear existing widgets:
+        # Clear existing connection widgets:
         for widget in self.connection_content.winfo_children():
             widget.destroy()
 
@@ -284,40 +286,123 @@ class ModelEditorPage(ttk.Frame):
         input_max = entity_schema["input_max"]
         output_min = entity_schema["output_min"]
         output_max = entity_schema["output_max"]
-        row = 0
 
-        # Inputs:
-        if input_max > 0:
-            if input_min < input_max:
-                input_label = ttk.Label(
-                    self.connection_content, text="Number of inputs:"
-                )
-                self.input_count_spinbox = ttk.Spinbox(
-                    self.connection_content,
-                    from_=input_min,
-                    to=input_max,
-                    state="readonly",
-                    width=SPINBOX_WIDTH,
-                    command=self.update_connection_inputs,
-                )
-                self.input_count_spinbox.set(input_min)
-                input_label.grid(
-                    row=row, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-                )
-                self.input_count_spinbox.grid(
-                    row=row, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-                )
+        self.input_count = input_min
+        self.output_count = output_min
 
-                self.update_connection_inputs()
+        # Input count:
 
-                row += 1
-        else:
-            # No Spinbox because min == max.
-            # Still reserve the fixed number of connections.
-            self.input_count_spinbox = None
-            self.input_count = input_min
+        # Widgets:
+        self.input_frame = ttk.Frame(self.connection_content)
+        self.input_list_frame = ttk.Frame(self.input_frame)
+        input_label = ttk.Label(self.input_frame, text="Number of inputs:")
 
+        # Grid:
+        self.input_frame.columnconfigure(0, weight=0)
+        self.input_frame.columnconfigure(1, weight=1)
+
+        # Display widgets:
+        self.input_frame.grid(row=0, column=0, sticky="nsew")
+        self.input_list_frame.grid(row=1, column=0, columnspan=2, sticky="nw")
+        input_label.grid(row=0, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w")
+
+        self.input_count_spinbox = ttk.Spinbox(
+            self.input_frame,
+            from_=input_min,
+            to=input_max,
+            state="readonly",
+            width=SPINBOX_WIDTH,
+            command=self.update_connection_inputs,
+        )
+        self.input_count_spinbox.set(input_min)
+        self.input_count_spinbox.grid(
+            row=0, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+        )
+
+        # Output count:
+
+        # Widgets:
+        self.output_frame = ttk.Frame(self.connection_content)
+        self.output_list_frame = ttk.Frame(self.output_frame)
+        output_label = ttk.Label(self.output_frame, text="Number of outputs:")
+
+        # Grid:
+        self.output_frame.columnconfigure(0, weight=0)
+        self.output_frame.columnconfigure(1, weight=1)
+
+        # Display widgets:
+        self.output_frame.grid(row=0, column=1, sticky="nsew")
+        self.output_list_frame.grid(row=1, column=0, columnspan=2, sticky="nw")
+        output_label.grid(row=0, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w")
+
+        self.output_count_spinbox = ttk.Spinbox(
+            self.output_frame,
+            from_=output_min,
+            to=output_max,
+            state="readonly",
+            width=SPINBOX_WIDTH,
+            command=self.update_connection_outputs,
+        )
+        self.output_count_spinbox.set(output_min)
+        self.output_count_spinbox.grid(
+            row=0, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+        )
+
+        # ----------------------------
+        # Connection Frame Layout
+        # ----------------------------
+
+        # Grid:
+        self.connection_content.columnconfigure(0, weight=1, uniform="connection")
+        self.connection_content.columnconfigure(1, weight=1, uniform="connection")
+
+        # Create connections:
         self.update_connection_inputs()
+        self.update_connection_outputs()
+
+    def get_allowed_input_entities(self):
+        selected_type = self.selected_entity["type"]
+        domain = self.schema.get_domain(self.model_data["domain"])
+        relationship_allowances = domain["relationship_allowances"]
+
+        allowed_source_types = [
+            source_type
+            for source_type, target_types in relationship_allowances.items()
+            if selected_type in target_types
+        ]
+
+        return [
+            entity
+            for entity in self.model_data["entities"]
+            if (
+                entity["type"] in allowed_source_types
+                and entity["id"] != self.selected_entity["id"]
+            )
+        ]
+
+    def get_allowed_output_entities(self):
+        selected_type = self.selected_entity["type"]
+        domain = self.schema.get_domain(self.model_data["domain"])
+        relationship_allowances = domain["relationship_allowances"]
+
+        allowed_target_types = relationship_allowances.get(selected_type, [])
+
+        return [
+            entity
+            for entity in self.model_data["entities"]
+            if (
+                entity["type"] in allowed_target_types
+                and entity["id"] != self.selected_entity["id"]
+            )
+        ]
+
+    def update_connection_inputs(self):
+        # Clear existing input widgets:
+        for widget in self.input_list_frame.winfo_children():
+            widget.destroy()
+
+        if self.selected_entity is None:
+            return
 
         input_count = (
             int(self.input_count_spinbox.get())
@@ -325,124 +410,31 @@ class ModelEditorPage(ttk.Frame):
             else self.input_count
         )
 
-        input_start_row = 1 if self.input_count_spinbox is not None else 0
-
-        self.output_start_row = input_start_row + input_count
-
-        # Outputs:
-        if output_max > 0:
-            if output_min < output_max:
-                self.output_label = ttk.Label(
-                    self.connection_content, text="Number of outputs:"
-                )
-                self.output_count_spinbox = ttk.Spinbox(
-                    self.connection_content,
-                    from_=output_min,
-                    to=output_max,
-                    state="readonly",
-                    width=SPINBOX_WIDTH,
-                    command=self.update_connection_outputs,
-                )
-                self.output_count_spinbox.set(output_min)
-                self.output_label.grid(
-                    row=self.output_start_row,
-                    column=0,
-                    padx=PAD_WIDGET,
-                    pady=PAD_WIDGET,
-                    sticky="w",
-                )
-                self.output_count_spinbox.grid(
-                    row=self.output_start_row,
-                    column=1,
-                    padx=PAD_WIDGET,
-                    pady=PAD_WIDGET,
-                    sticky="w",
-                )
-
-                self.update_connection_outputs()
-
-                row += 1
-
-            else:
-                self.output_count_spinbox = None
-                self.output_count = output_min
-
-        self.update_connection_outputs()
-
-    def update_connection_inputs(self):
-        # Remove existing input widgets:
-        for widget in self.connection_content.winfo_children():
-            if getattr(widget, "connection_input", False):
-                widget.destroy()
-
-        if self.input_count_spinbox is not None:
-            input_count = int(self.input_count_spinbox.get())
-        else:
-            input_count = self.input_count
-
-        selected_type = self.selected_entity["type"]
-        domain = self.schema.get_domain(self.model_data["domain"])
-        relationship_allowances = domain["relationship_allowances"]
-
-        # Find allowed source types for the selected Entity type:
-        allowed_source_types = [
-            source_type
-            for source_type, target_types in relationship_allowances.items()
-            if selected_type in target_types
-        ]
-
-        # Find existing Entities wigh an allowed type:
-        allowed_entities = [
-            entity
-            for entity in self.model_data["entities"]
-            if entity["type"] in allowed_source_types
-            and entity["id"] != self.selected_entity["id"]
-        ]
+        allowed_entities = self.get_allowed_input_entities()
 
         for index in range(input_count):
-            label = ttk.Label(self.connection_content, text=f"Input {index + 1}:")
+            label = ttk.Label(self.input_list_frame, text=f"Input {index + 1}:")
             combobox = ttk.Combobox(
-                self.connection_content,
+                self.input_list_frame,
                 state="readonly",
                 values=[entity["name"] for entity in allowed_entities],
                 width=INPUT_WIDTH,
             )
-            label.connection_input = True
-            combobox.connection_input = True
 
-            row = index + 1 if self.input_count_spinbox is not None else index
-
-            label.grid(row=row, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w")
+            label.grid(
+                row=index + 1, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+            )
             combobox.grid(
-                row=row, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-            )
-
-        self.output_start_row = (
-            1 if self.input_count_spinbox is not None else 0
-        ) + input_count
-
-        if self.output_count_spinbox is not None:
-            self.output_label.grid(
-                row=self.output_start_row,
-                column=0,
-                padx=PAD_WIDGET,
-                pady=PAD_WIDGET,
-                sticky="w",
-            )
-
-            self.output_count_spinbox.grid(
-                row=self.output_start_row,
-                column=1,
-                padx=PAD_WIDGET,
-                pady=PAD_WIDGET,
-                sticky="w",
+                row=index + 1, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
             )
 
     def update_connection_outputs(self):
-        # Remove existing output widgets:
-        for widget in self.connection_content.winfo_children():
-            if getattr(widget, "connection_output", False):
-                widget.destroy()
+        # Clear existing output widgets:
+        for widget in self.output_list_frame.winfo_children():
+            widget.destroy()
+
+        if self.selected_entity is None:
+            return
 
         output_count = (
             int(self.output_count_spinbox.get())
@@ -450,38 +442,22 @@ class ModelEditorPage(ttk.Frame):
             else self.output_count
         )
 
-        selected_type = self.selected_entity["type"]
-        domain = self.schema.get_domain(self.model_data["domain"])
-        relationship_allowances = domain["relationship_allowances"]
-
-        # Find allowed target types for the selected Entity type:
-        allowed_target_types = relationship_allowances.get(selected_type, [])
-
-        # Find existing Entities with an allowed type:
-        allowed_entities = [
-            entity
-            for entity in self.model_data["entities"]
-            if entity["type"] in allowed_target_types
-            and entity["id"] != self.selected_entity["id"]
-        ]
+        allowed_entities = self.get_allowed_output_entities()
 
         for index in range(output_count):
-            label = ttk.Label(self.connection_content, text=f"Output {index + 1}:")
+            label = ttk.Label(self.output_list_frame, text=f"Output {index + 1}:")
             combobox = ttk.Combobox(
-                self.connection_content,
+                self.output_list_frame,
                 state="readonly",
                 values=[entity["name"] for entity in allowed_entities],
                 width=INPUT_WIDTH,
             )
 
-            label.connection_output_index = index
-            combobox.connection_output_index = index
-
-            row = self.output_start_row + index
-
-            label.grid(row=row, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w")
+            label.grid(
+                row=index, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+            )
             combobox.grid(
-                row=row, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+                row=index, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
             )
 
     def update_entity_editor(self):
