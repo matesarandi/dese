@@ -1,0 +1,848 @@
+import json
+import tkinter as tk
+from tkinter import messagebox, ttk
+
+from dese.constants import (
+    BUTTON_WIDTH,
+    INPUT_WIDTH,
+    PAD_FRAME_IN,
+    PAD_WIDGET,
+    SPINBOX_WIDTH,
+)
+
+
+class ModelEditorPage(ttk.Frame):
+    def __init__(self, parent, model_path, schema, model_changed_callback):
+        super().__init__(parent)
+        self.model_path = model_path
+        self.schema = schema
+        self.model_changed_callback = model_changed_callback
+        self.model_data = None
+        self.selected_entity = None
+        self.property_entries = {}
+        self.load_model()
+        self.create_widgets()
+
+    # ----------------------------
+    # METHODS
+    # ----------------------------
+
+    def generate_entity_id(self):
+        existing_ids = [entity["id"] for entity in self.model_data["entities"]]
+
+        number = 1
+
+        while f"E{number:03d}" in existing_ids:
+            number += 1
+
+        return f"E{number:03d}"
+
+    # ----------------------------
+    # Add Entity Window
+    # ----------------------------
+
+    def add_entity(self):
+        # Window:
+        self.add_entity_window = tk.Toplevel(self)
+        self.add_entity_window.title("Add Entity")
+        self.add_entity_window.resizable(False, False)
+
+        # Widgets:
+        self.add_entity_name_label = ttk.Label(self.add_entity_window, text="Name:")
+        self.add_entity_name_entry = ttk.Entry(
+            self.add_entity_window, width=INPUT_WIDTH
+        )
+        self.add_entity_type_label = ttk.Label(self.add_entity_window, text="Type:")
+        self.add_entity_type_combobox = ttk.Combobox(
+            self.add_entity_window,
+            state="readonly",
+            values=self.schema.get_entity_types(self.model_data["domain"]),
+            width=INPUT_WIDTH,
+        )
+        self.add_entity_cancel_button = ttk.Button(
+            self.add_entity_window,
+            text="Cancel",
+            width=BUTTON_WIDTH,
+            command=self.add_entity_window.destroy,
+        )
+        self.add_entity_confirm_button = ttk.Button(
+            self.add_entity_window,
+            text="Add",
+            width=BUTTON_WIDTH,
+            command=self.confirm_add_entity,
+        )
+
+        # Display widgets:
+        self.add_entity_name_label.grid(
+            row=0, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+        )
+        self.add_entity_name_entry.grid(
+            row=0, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+        )
+        self.add_entity_type_label.grid(
+            row=1, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+        )
+        self.add_entity_type_combobox.grid(
+            row=1, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+        )
+        self.add_entity_cancel_button.grid(
+            row=2, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="e"
+        )
+        self.add_entity_confirm_button.grid(
+            row=2, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="e"
+        )
+
+    def confirm_add_entity(self):
+        # Get input:
+        name = self.add_entity_name_entry.get()
+        entity_type = self.add_entity_type_combobox.get()
+
+        # Validate input:
+        if not name:
+            messagebox.showwarning("Invalid Entity", "Name is required.")
+            return
+
+        if not entity_type:
+            messagebox.showwarning("Invalid Entity", "Type is required.")
+            return
+
+        # Get entity schema:
+        entity_schema = self.schema.get_entity_schema(
+            self.model_data["domain"], entity_type
+        )
+
+        # Create properties:
+        properties = {
+            property_name: None for property_name in entity_schema["properties"]
+        }
+
+        # Create entity:
+        entity = {
+            "id": self.generate_entity_id(),
+            "name": name,
+            "type": entity_type,
+            "properties": properties,
+        }
+
+        # Add entity:
+        self.model_data["entities"].append(entity)
+
+        # Refresh entity table:
+        self.refresh_entity_table()
+
+        # Clear name:
+        self.add_entity_name_entry.delete(0, "end")
+        self.add_entity_name_entry.focus_set()
+
+        # Model changed:
+        self.model_changed_callback(True)
+
+    def clear_entity_editor(self):
+        # Clear basic fields:
+        self.name_entry.delete(0, "end")
+        self.type_combobox.set("")
+
+        # Clear property widgets:
+        for widget in self.property_content.winfo_children():
+            widget.destroy()
+
+        self.property_entries.clear()
+
+        # Clear connection widgets:
+        for widget in self.connection_content.winfo_children():
+            widget.destroy()
+
+    def delete_entity(self):
+        # Get selection:
+        selected_item = self.entity_table.selection()
+
+        if not selected_item:
+            return
+
+        # Get entity ID:
+        item_data = self.entity_table.item(selected_item[0])
+        entity_id = item_data["values"][0]
+
+        # Delete entity:
+        self.model_data["entities"] = [
+            entity
+            for entity in self.model_data["entities"]
+            if entity["id"] != entity_id
+        ]
+
+        # Refresh entity table:
+        self.refresh_entity_table()
+
+        # Clear selection:
+        self.selected_entity = None
+
+        # Clear entity editor:
+        self.clear_entity_editor()
+
+        # Model changed:
+        self.model_changed_callback(True)
+
+    def update_domain(self, selected_domain):
+        if not selected_domain:
+            return
+
+        self.model_data["domain"] = selected_domain
+        self.update_type_selector()
+        self.model_changed_callback(True)
+
+    def update_type_selector(self):
+        domain = self.model_data["domain"]
+
+        if not domain:
+            self.type_combobox["values"] = []
+            return
+
+        self.type_combobox["values"] = self.schema.get_entity_types(domain)
+
+    def update_property_editor(self):
+        if self.selected_entity is None:
+            return
+
+        # Clear existing widgets:
+        for widget in self.property_content.winfo_children():
+            widget.destroy()
+
+        self.property_entries.clear()
+
+        entity_schema = self.schema.get_entity_schema(
+            self.model_data["domain"], self.selected_entity["type"]
+        )
+
+        if entity_schema is None:
+            return
+
+        properties = entity_schema["properties"]
+
+        for property_name, description in properties.items():
+            # Widgets:
+            label = ttk.Label(self.property_content, text=f"{property_name}:")
+            entry = ttk.Entry(self.property_content, width=INPUT_WIDTH)
+            description_label = ttk.Label(self.property_content, text=description)
+            separator = ttk.Separator(self.property_content, orient="horizontal")
+            property_value = self.selected_entity.get("properties", {}).get(
+                property_name
+            )
+
+            if property_value is not None:
+                entry.insert(0, str(property_value))
+
+            # Display widgets:
+            row = len(self.property_entries) * 3
+            label.grid(
+                row=row + 1,
+                column=0,
+                padx=PAD_WIDGET,
+                pady=PAD_WIDGET,
+                sticky="w",
+            )
+            entry.grid(
+                row=row + 1,
+                column=1,
+                padx=PAD_WIDGET,
+                pady=PAD_WIDGET,
+                sticky="w",
+            )
+            description_label.grid(
+                row=row,
+                column=0,
+                columnspan=2,
+                padx=PAD_WIDGET,
+                pady=PAD_WIDGET,
+                sticky="w",
+            )
+            separator.grid(
+                row=row + 2,
+                column=0,
+                columnspan=2,
+                sticky="ew",
+                padx=PAD_WIDGET,
+                pady=PAD_WIDGET,
+            )
+            self.property_entries[property_name] = entry
+
+    def update_connection_editor(self):
+        # Clear existing widgets:
+        for widget in self.connection_content.winfo_children():
+            widget.destroy()
+
+        if self.selected_entity is None:
+            return
+
+        entity_schema = self.schema.get_entity_schema(
+            self.model_data["domain"], self.selected_entity["type"]
+        )
+
+        if entity_schema is None:
+            return
+
+        input_min = entity_schema["input_min"]
+        input_max = entity_schema["input_max"]
+        output_min = entity_schema["output_min"]
+        output_max = entity_schema["output_max"]
+        row = 0
+
+        # Inputs:
+        if input_max > 0:
+            if input_min < input_max:
+                input_label = ttk.Label(
+                    self.connection_content, text="Number of inputs:"
+                )
+                self.input_count_spinbox = ttk.Spinbox(
+                    self.connection_content,
+                    from_=input_min,
+                    to=input_max,
+                    state="readonly",
+                    width=SPINBOX_WIDTH,
+                    command=self.update_connection_inputs,
+                )
+                self.input_count_spinbox.set(input_min)
+                input_label.grid(
+                    row=row, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+                )
+                self.input_count_spinbox.grid(
+                    row=row, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+                )
+
+                self.update_connection_inputs()
+
+                row += 1
+        else:
+            # No Spinbox because min == max.
+            # Still reserve the fixed number of connections.
+            self.input_count_spinbox = None
+            self.input_count = input_min
+
+        self.update_connection_inputs()
+
+        input_count = (
+            int(self.input_count_spinbox.get())
+            if self.input_count_spinbox is not None
+            else self.input_count
+        )
+
+        input_start_row = 1 if self.input_count_spinbox is not None else 0
+
+        self.output_start_row = input_start_row + input_count
+
+        # Outputs:
+        if output_max > 0:
+            if output_min < output_max:
+                self.output_label = ttk.Label(
+                    self.connection_content, text="Number of outputs:"
+                )
+                self.output_count_spinbox = ttk.Spinbox(
+                    self.connection_content,
+                    from_=output_min,
+                    to=output_max,
+                    state="readonly",
+                    width=SPINBOX_WIDTH,
+                    command=self.update_connection_outputs,
+                )
+                self.output_count_spinbox.set(output_min)
+                self.output_label.grid(
+                    row=self.output_start_row,
+                    column=0,
+                    padx=PAD_WIDGET,
+                    pady=PAD_WIDGET,
+                    sticky="w",
+                )
+                self.output_count_spinbox.grid(
+                    row=self.output_start_row,
+                    column=1,
+                    padx=PAD_WIDGET,
+                    pady=PAD_WIDGET,
+                    sticky="w",
+                )
+
+                self.update_connection_outputs()
+
+                row += 1
+
+            else:
+                self.output_count_spinbox = None
+                self.output_count = output_min
+
+        self.update_connection_outputs()
+
+    def update_connection_inputs(self):
+        # Remove existing input widgets:
+        for widget in self.connection_content.winfo_children():
+            if getattr(widget, "connection_input", False):
+                widget.destroy()
+
+        if self.input_count_spinbox is not None:
+            input_count = int(self.input_count_spinbox.get())
+        else:
+            input_count = self.input_count
+
+        selected_type = self.selected_entity["type"]
+        domain = self.schema.get_domain(self.model_data["domain"])
+        relationship_allowances = domain["relationship_allowances"]
+
+        # Find allowed source types for the selected Entity type:
+        allowed_source_types = [
+            source_type
+            for source_type, target_types in relationship_allowances.items()
+            if selected_type in target_types
+        ]
+
+        # Find existing Entities wigh an allowed type:
+        allowed_entities = [
+            entity
+            for entity in self.model_data["entities"]
+            if entity["type"] in allowed_source_types
+            and entity["id"] != self.selected_entity["id"]
+        ]
+
+        for index in range(input_count):
+            label = ttk.Label(self.connection_content, text=f"Input {index + 1}:")
+            combobox = ttk.Combobox(
+                self.connection_content,
+                state="readonly",
+                values=[entity["name"] for entity in allowed_entities],
+                width=INPUT_WIDTH,
+            )
+            label.connection_input = True
+            combobox.connection_input = True
+
+            row = index + 1 if self.input_count_spinbox is not None else index
+
+            label.grid(row=row, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w")
+            combobox.grid(
+                row=row, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+            )
+
+        self.output_start_row = (
+            1 if self.input_count_spinbox is not None else 0
+        ) + input_count
+
+        if self.output_count_spinbox is not None:
+            self.output_label.grid(
+                row=self.output_start_row,
+                column=0,
+                padx=PAD_WIDGET,
+                pady=PAD_WIDGET,
+                sticky="w",
+            )
+
+            self.output_count_spinbox.grid(
+                row=self.output_start_row,
+                column=1,
+                padx=PAD_WIDGET,
+                pady=PAD_WIDGET,
+                sticky="w",
+            )
+
+    def update_connection_outputs(self):
+        # Remove existing output widgets:
+        for widget in self.connection_content.winfo_children():
+            if getattr(widget, "connection_output", False):
+                widget.destroy()
+
+        output_count = (
+            int(self.output_count_spinbox.get())
+            if self.output_count_spinbox is not None
+            else self.output_count
+        )
+
+        selected_type = self.selected_entity["type"]
+        domain = self.schema.get_domain(self.model_data["domain"])
+        relationship_allowances = domain["relationship_allowances"]
+
+        # Find allowed target types for the selected Entity type:
+        allowed_target_types = relationship_allowances.get(selected_type, [])
+
+        # Find existing Entities with an allowed type:
+        allowed_entities = [
+            entity
+            for entity in self.model_data["entities"]
+            if entity["type"] in allowed_target_types
+            and entity["id"] != self.selected_entity["id"]
+        ]
+
+        for index in range(output_count):
+            label = ttk.Label(self.connection_content, text=f"Output {index + 1}:")
+            combobox = ttk.Combobox(
+                self.connection_content,
+                state="readonly",
+                values=[entity["name"] for entity in allowed_entities],
+                width=INPUT_WIDTH,
+            )
+
+            label.connection_output_index = index
+            combobox.connection_output_index = index
+
+            row = self.output_start_row + index
+
+            label.grid(row=row, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w")
+            combobox.grid(
+                row=row, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+            )
+
+    def update_entity_editor(self):
+        if self.selected_entity is None:
+            return
+
+        self.name_entry.delete(0, "end")
+        self.name_entry.insert(0, self.selected_entity["name"])
+        self.type_combobox.set(self.selected_entity["type"])
+        self.update_property_editor()
+        self.update_connection_editor()
+
+    def load_model(self):
+        try:
+            with open(self.model_path, "r") as file:
+                self.model_data = json.load(file)
+            print(
+                self.schema.get_entity_schema(self.model_data["domain"], "Processing")
+            )
+
+        except Exception as error:
+            messagebox.showerror(
+                "Model loading error", f"Could not load model:\n{error}"
+            )
+            self.model_data = None
+
+    def save_model(self):
+        with open(self.model_path, "w") as file:
+            json.dump(self.model_data, file, indent=4)
+        self.model_changed_callback(False)
+
+    def populate_entity_table(self):
+        for entity in self.model_data["entities"]:
+            self.entity_table.insert(
+                "", "end", values=(entity["id"], entity["name"], entity["type"], "", "")
+            )
+
+    def refresh_entity_table(self):
+        self.entity_table.delete(*self.entity_table.get_children())
+        self.populate_entity_table()
+
+    # ----------------------------
+    # EVENT CALLBACKS
+    # ----------------------------
+
+    def entity_selected(self, event):
+        selected_item = self.entity_table.selection()
+
+        if selected_item:
+            item_data = self.entity_table.item(
+                selected_item[0]
+            )  # The first item (selected_item[0]), because it could allow multiple line selection.
+            entity_id = item_data["values"][0]
+
+            for entity in self.model_data["entities"]:
+                if entity["id"] == entity_id:
+                    self.selected_entity = entity
+                    self.update_entity_editor()
+                    break
+
+    def update_entity(self):
+        if self.selected_entity is None:
+            return
+
+        # Get input:
+        new_name = self.name_entry.get()
+        new_type = self.type_combobox.get()
+        new_properties = {
+            property_name: entry.get()
+            for property_name, entry in self.property_entries.items()
+        }
+
+        # Check for changes:
+        name_changed = self.selected_entity["name"] != new_name
+        type_changed = self.selected_entity["type"] != new_type
+        properties_changed = self.selected_entity["properties"] != new_properties
+
+        # Update entity:
+        self.selected_entity["name"] = new_name
+        self.selected_entity["type"] = new_type
+        self.selected_entity["properties"] = new_properties
+
+        # Refresh entity table:
+        self.refresh_entity_table()
+
+        # Model changed:
+        if name_changed or type_changed or properties_changed:
+            self.model_changed_callback(True)
+
+    # ----------------------------
+    # STRUCTURE TAB
+    # ----------------------------
+
+    def create_structure_tab(self):
+        # Grid:
+        self.structure_tab.rowconfigure(0, weight=1)
+        self.structure_tab.rowconfigure(1, weight=1)
+        self.structure_tab.columnconfigure(0, weight=1)
+
+        # ----------------------------
+        # Entity Table
+        # ----------------------------
+
+        # Frame widget:
+        self.entity_table_frame = ttk.LabelFrame(
+            self.structure_tab,
+            text="Entities",
+            style="DESE.Section.TLabelframe",
+            padding=PAD_FRAME_IN,
+        )
+
+        # Grid:
+        self.entity_table_frame.rowconfigure(0, weight=1)
+        self.entity_table_frame.columnconfigure(0, weight=1)
+
+        # Child widgets:
+        self.entity_table = ttk.Treeview(
+            self.entity_table_frame,
+            columns=("id", "name", "type", "inputs", "outputs"),
+            show="headings",
+        )
+        self.entity_table_scrollbar = ttk.Scrollbar(
+            self.entity_table_frame, orient="vertical", command=self.entity_table.yview
+        )
+        self.entity_table.configure(yscrollcommand=self.entity_table_scrollbar.set)
+        self.entity_button_frame = ttk.Frame(self.entity_table_frame)
+        self.add_entity_button = ttk.Button(
+            self.entity_button_frame,
+            text="Add",
+            width=BUTTON_WIDTH,
+            command=self.add_entity,
+        )
+        self.delete_entity_button = ttk.Button(
+            self.entity_button_frame,
+            text="Delete",
+            width=BUTTON_WIDTH,
+            command=self.delete_entity,
+        )
+
+        # Event bindings:
+        self.entity_table.bind("<<TreeviewSelect>>", self.entity_selected)
+
+        # Column headings:
+        self.entity_table.heading("id", text="ID")
+        self.entity_table.heading("name", text="Name")
+        self.entity_table.heading("type", text="Type")
+        self.entity_table.heading("inputs", text="Inputs")
+        self.entity_table.heading("outputs", text="Outputs")
+
+        # Display frame widget:
+        self.entity_table_frame.grid(
+            row=0, column=0, sticky="nsew", padx=PAD_WIDGET, pady=PAD_WIDGET
+        )
+
+        # Display child widgets:
+        self.entity_table.grid(row=0, column=0, sticky="nsew")
+        self.entity_table_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.entity_button_frame.grid(
+            row=1, column=0, columnspan=2, sticky="w", padx=PAD_WIDGET, pady=PAD_WIDGET
+        )
+        self.add_entity_button.grid(row=0, column=0, padx=PAD_WIDGET)
+        self.delete_entity_button.grid(row=0, column=1, padx=PAD_WIDGET)
+
+        # ----------------------------
+        # Editor
+        # ----------------------------
+
+        # Frame widget:
+        self.editor = ttk.LabelFrame(
+            self.structure_tab,
+            text="Editor",
+            style="DESE.Section.TLabelframe",
+            padding=PAD_FRAME_IN,
+        )
+
+        # Grid:
+        self.editor.rowconfigure(1, weight=1)
+        self.editor.columnconfigure(0, weight=1)
+        self.editor.columnconfigure(1, weight=1)
+
+        # ----------------------------
+        # Editor Sections
+        # ----------------------------
+
+        # Section frames:
+        self.basic_editor = ttk.Frame(self.editor)
+        self.property_editor = ttk.Frame(self.editor)
+        self.connection_editor = ttk.Frame(self.editor)
+        self.button_frame = ttk.Frame(self.editor)
+
+        # Grid (property editor):
+        self.property_editor.rowconfigure(0, weight=1)
+        self.property_editor.columnconfigure(0, weight=1)
+
+        # Grid (button frame):
+        self.button_frame.columnconfigure(0, weight=1)
+
+        # Grid (connection editor):
+        self.connection_editor.rowconfigure(0, weight=1)
+        self.connection_editor.columnconfigure(0, weight=1)
+
+        # Property editor widgets:
+        self.property_canvas = tk.Canvas(self.property_editor)
+        self.property_scrollbar = ttk.Scrollbar(
+            self.property_editor, orient="vertical", command=self.property_canvas.yview
+        )
+        self.property_content = ttk.Frame(self.property_canvas)
+        self.property_canvas.configure(yscrollcommand=self.property_scrollbar.set)
+
+        # Property content:
+        self.property_window = self.property_canvas.create_window(
+            (0, 0), window=self.property_content, anchor="nw"
+        )
+
+        # Event binding:
+        self.property_content.bind(
+            "<Configure>",
+            lambda event: self.property_canvas.configure(
+                scrollregion=self.property_canvas.bbox("all")
+            ),
+        )
+        self.property_canvas.bind(
+            "<Configure>",
+            lambda event: self.property_canvas.itemconfigure(
+                self.property_window, width=event.width
+            ),
+        )
+
+        # Display property editor widgets:
+        self.property_canvas.grid(row=0, column=0, sticky="nsew")
+        self.property_scrollbar.grid(row=0, column=1, sticky="ns")
+
+        # Connection editor widgets:
+        self.connection_canvas = tk.Canvas(self.connection_editor)
+        self.connection_scrollbar = ttk.Scrollbar(
+            self.connection_editor,
+            orient="vertical",
+            command=self.connection_canvas.yview,
+        )
+        self.connection_content = ttk.Frame(self.connection_canvas)
+        self.connection_canvas.configure(yscrollcommand=self.connection_scrollbar.set)
+
+        # Connection content:
+        self.connection_window = self.connection_canvas.create_window(
+            (0, 0), window=self.connection_content, anchor="nw"
+        )
+
+        # Event binding:
+        self.connection_content.bind(
+            "<Configure>",
+            lambda event: self.connection_canvas.configure(
+                scrollregion=self.connection_canvas.bbox("all")
+            ),
+        )
+        self.connection_canvas.bind(
+            "<Configure>",
+            lambda event: self.connection_canvas.itemconfigure(
+                self.connection_window, width=event.width
+            ),
+        )
+
+        # Display connection editor widgets:
+        self.connection_canvas.grid(row=0, column=0, sticky="nsew")
+        self.connection_scrollbar.grid(row=0, column=1, sticky="ns")
+
+        # Display section frames:
+        self.basic_editor.grid(
+            row=0, column=0, columnspan=2, sticky="ew", padx=PAD_WIDGET, pady=PAD_WIDGET
+        )
+        self.property_editor.grid(
+            row=1, column=0, sticky="nsew", padx=PAD_WIDGET, pady=PAD_WIDGET
+        )
+        self.connection_editor.grid(
+            row=1, column=1, sticky="nsew", padx=PAD_WIDGET, pady=PAD_WIDGET
+        )
+        self.button_frame.grid(
+            row=2, column=0, columnspan=2, sticky="ew", padx=PAD_WIDGET, pady=PAD_WIDGET
+        )
+
+        # Child widgets:
+        self.name_label = ttk.Label(self.basic_editor, text="Name:")
+        self.name_entry = ttk.Entry(self.basic_editor, width=INPUT_WIDTH)
+        self.type_title_label = ttk.Label(self.basic_editor, text="Type:")
+        self.type_combobox = ttk.Combobox(
+            self.basic_editor, state="readonly", width=INPUT_WIDTH
+        )
+
+        self.update_entity_button = ttk.Button(
+            self.button_frame,
+            text="Update",
+            width=BUTTON_WIDTH,
+            command=self.update_entity,
+        )
+        self.save_model_button = ttk.Button(
+            self.button_frame, text="Save", width=BUTTON_WIDTH, command=self.save_model
+        )
+
+        # Display frame widget:
+        self.editor.grid(
+            row=1, column=0, sticky="nsew", padx=PAD_WIDGET, pady=PAD_WIDGET
+        )
+
+        # Display child widgets:
+        self.name_label.grid(
+            row=0, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+        )
+        self.name_entry.grid(
+            row=0, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+        )
+        self.type_title_label.grid(
+            row=0, column=2, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+        )
+        self.type_combobox.grid(
+            row=0, column=3, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+        )
+        self.update_entity_button.grid(
+            row=0, column=0, sticky="e", padx=PAD_WIDGET, pady=PAD_WIDGET
+        )
+        self.save_model_button.grid(
+            row=0, column=1, sticky="e", padx=PAD_WIDGET, pady=PAD_WIDGET
+        )
+
+    # ----------------------------
+    # MODEL EDITOR PAGE
+    # ----------------------------
+
+    def create_widgets(self):
+        # Grid:
+        self.rowconfigure(0, weight=0)
+        self.rowconfigure(1, weight=1)
+        self.columnconfigure(0, weight=1)
+
+        # ----------------------------
+        # Notebook
+        # ----------------------------
+
+        # Widget:
+        self.notebook = ttk.Notebook(self)
+
+        # ----------------------------
+        # Tabs
+        # ----------------------------
+
+        # Child widgets:
+        self.structure_tab = ttk.Frame(self.notebook)
+        self.visualization_tab = ttk.Frame(self.notebook)
+        self.rules_tab = ttk.Frame(self.notebook)
+
+        # Configuration:
+        self.notebook.add(self.structure_tab, text="Structure")
+        self.notebook.add(self.visualization_tab, text="Visualization")
+        self.notebook.add(self.rules_tab, text="Rules")
+
+        # Display widgets:
+        self.notebook.grid(row=1, column=0, sticky="nsew")
+
+        # Create tab content:
+        self.create_structure_tab()
+
+        # Populate entity table:
+        self.populate_entity_table()
+
+        # Update type selector:
+        self.update_type_selector()

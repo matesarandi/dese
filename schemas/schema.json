@@ -1,0 +1,195 @@
+{
+  "base_entity_schema": {
+    "required_properties": {
+      "id": {
+        "type": "string",
+        "description": "Unique identifier automatically generated for the Entity."
+      },
+      "name": {
+        "type": "string",
+        "description": "Human-readable name of the Entity."
+      },
+      "type": {
+        "type": "string",
+        "description": "Entity Type defined by the selected domain."
+      }
+    }
+  },
+
+  "base_flow_object_schema": {
+    "required_properties": {
+      "id": {
+        "type": "string",
+        "description": "Unique identifier automatically generated for the Flow Object."
+      },
+      "name": {
+        "type": "string",
+        "description": "Human-readable name of the Flow Object."
+      }
+    }
+  },
+
+  "base_relationship_schema": {
+    "required_properties": {
+      "id": {
+        "type": "string",
+        "description": "Unique identifier automatically generated for the Relationship."
+      },
+      "source": {
+        "type": "string",
+        "description": "Identifier of the source Entity."
+      },
+      "target": {
+        "type": "string",
+        "description": "Identifier of the target Entity."
+      }
+    }
+  },
+
+  "domains": [
+    {
+      "name": "Production",
+      "description": "The Production domain provides modelling guidance for production-oriented Entity Types / Roles and their relevant Properties, Relationships, and Rule Templates. These are modelling recommendations; they do not define hard-coded simulation behaviour.",
+
+      "entity_types": [
+        "Source",
+        "Processing",
+        "Inspection",
+        "Storage",
+        "Transport",
+        "Process Supply",
+        "Process Sink"
+      ],
+
+      "rule_templates": [
+        "Routing",
+        "Eligibility",
+        "State Change",
+        "Failure",
+        "Generation",
+        "Capacity"
+      ],
+
+      "entity_schemas": [
+        {
+          "type": "Source",
+          "input_min": 0,
+          "input_max": 0,
+          "output_min": 1,
+          "output_max": 1,
+          "properties": {
+            "generation_interval": "Time interval between generated Flow Objects.",
+            "batch_size": "Number of Flow Objects generated at each generation event."
+          }
+        },
+
+        {
+          "type": "Processing",
+          "input_min": 1,
+          "input_max": 7,
+          "output_min": 1,
+          "output_max": 2,
+          "properties": {
+            "processing_time": "Time required to process one Flow Object.",
+            "capacity": "Maximum number of Flow Objects processed at once."
+          }
+        },
+
+        {
+          "type": "Inspection",
+          "input_min": 1,
+          "input_max": 1,
+          "output_min": 1,
+          "output_max": 2,
+          "properties": {
+            "inspection_time": "Time required to inspect one Flow Object.",
+            "capacity": "Maximum number of Flow Objects inspected at once."
+          }
+        },
+
+        {
+          "type": "Storage",
+          "input_min": 1,
+          "input_max": 1,
+          "output_min": 1,
+          "output_max": 2,
+          "properties": {
+            "capacity": "Maximum number of Flow Objects that can be stored.",
+            "initial_inventory": "Initial quantity of Flow Objects in the Storage.",
+            "queue_rule": "Rule determining the order in which Flow Objects leave the Storage."
+          }
+        },
+
+        {
+          "type": "Transport",
+          "input_min": 1,
+          "input_max": 1,
+          "output_min": 1,
+          "output_max": 1,
+          "properties": {
+            "transport_time": "Time required to transport one Flow Object.",
+            "capacity": "Maximum number of Flow Objects that can be transported at once."
+          }
+        },
+
+        {
+          "type": "Process Supply",
+          "input_min": 0,
+          "input_max": 0,
+          "output_min": 1,
+          "output_max": 1,
+          "properties": {
+            "capacity": "Maximum quantity of supplied material available.",
+            "initial_quantity": "Initial quantity of supplied material.",
+            "replenishment_interval": "Time interval between replenishment events.",
+            "replenishment_quantity": "Quantity added at each replenishment event."
+          }
+        },
+
+        {
+          "type": "Process Sink",
+          "input_min": 1,
+          "input_max": 1,
+          "output_min": 0,
+          "output_max": 0,
+          "properties": {}
+        }
+      ],
+
+      "relationship_allowances": {
+        "Source": [
+          "Processing",
+          "Inspection",
+          "Storage",
+          "Transport"
+        ],
+        "Processing": [
+          "Processing",
+          "Inspection",
+          "Storage",
+          "Transport",
+          "Process Sink"
+        ],
+        "Inspection": [
+          "Processing",
+          "Inspection",
+          "Storage",
+          "Transport",
+          "Process Sink"
+        ],
+        "Storage": [
+          "Processing"
+        ],
+        "Transport": [
+          "Processing",
+          "Inspection",
+          "Transport",
+          "Process Sink"
+        ],
+        "Process Supply": [
+          "Processing"
+        ]
+      }
+    }
+  ]
+}

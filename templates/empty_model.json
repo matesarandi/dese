@@ -1,0 +1,21 @@
+{
+  "domain": null,
+  "flow_object": {
+    "name": null
+  },
+  "entities": [
+    {
+      "id": "E001",
+      "name": "Source_1",
+      "type": "Source",
+      "properties": {
+        "generation_interval": null,
+        "batch_size": null
+        }
+    }
+  ],
+
+  "relationships": [],
+  "process_structure": [],
+  "rules": []
+}
