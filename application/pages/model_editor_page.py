@@ -150,8 +150,8 @@ class ModelEditorPage(ttk.Frame):
 
         self.property_entries.clear()
 
-        # Clear connection widgets:
-        for widget in self.connection_content.winfo_children():
+        # Clear relationship widgets:
+        for widget in self.relationship_content.winfo_children():
             widget.destroy()
 
     def delete_entity(self):
@@ -267,9 +267,9 @@ class ModelEditorPage(ttk.Frame):
             )
             self.property_entries[property_name] = entry
 
-    def update_connection_editor(self):
-        # Clear existing connection widgets:
-        for widget in self.connection_content.winfo_children():
+    def update_relationship_editor(self):
+        # Clear existing relationship widgets:
+        for widget in self.relationship_content.winfo_children():
             widget.destroy()
 
         if self.selected_entity is None:
@@ -293,7 +293,7 @@ class ModelEditorPage(ttk.Frame):
         # Input count:
 
         # Widgets:
-        self.input_frame = ttk.Frame(self.connection_content)
+        self.input_frame = ttk.Frame(self.relationship_content)
         self.input_list_frame = ttk.Frame(self.input_frame)
         input_label = ttk.Label(self.input_frame, text="Number of inputs:")
 
@@ -312,7 +312,7 @@ class ModelEditorPage(ttk.Frame):
             to=input_max,
             state="readonly",
             width=SPINBOX_WIDTH,
-            command=self.update_connection_inputs,
+            command=self.update_relationship_inputs,
         )
         self.input_count_spinbox.set(input_min)
         self.input_count_spinbox.grid(
@@ -322,7 +322,7 @@ class ModelEditorPage(ttk.Frame):
         # Output count:
 
         # Widgets:
-        self.output_frame = ttk.Frame(self.connection_content)
+        self.output_frame = ttk.Frame(self.relationship_content)
         self.output_list_frame = ttk.Frame(self.output_frame)
         output_label = ttk.Label(self.output_frame, text="Number of outputs:")
 
@@ -341,7 +341,7 @@ class ModelEditorPage(ttk.Frame):
             to=output_max,
             state="readonly",
             width=SPINBOX_WIDTH,
-            command=self.update_connection_outputs,
+            command=self.update_relationship_outputs,
         )
         self.output_count_spinbox.set(output_min)
         self.output_count_spinbox.grid(
@@ -349,16 +349,16 @@ class ModelEditorPage(ttk.Frame):
         )
 
         # ----------------------------
-        # Connection Frame Layout
+        # Relationship Frame Layout
         # ----------------------------
 
         # Grid:
-        self.connection_content.columnconfigure(0, weight=1, uniform="connection")
-        self.connection_content.columnconfigure(1, weight=1, uniform="connection")
+        self.relationship_content.columnconfigure(0, weight=1, uniform="relationship")
+        self.relationship_content.columnconfigure(1, weight=1, uniform="relationship")
 
-        # Create connections:
-        self.update_connection_inputs()
-        self.update_connection_outputs()
+        # Create relationships:
+        self.update_relationship_inputs()
+        self.update_relationship_outputs()
 
     def get_allowed_input_entities(self):
         selected_type = self.selected_entity["type"]
@@ -396,7 +396,7 @@ class ModelEditorPage(ttk.Frame):
             )
         ]
 
-    def update_connection_inputs(self):
+    def update_relationship_inputs(self):
         # Clear existing input widgets:
         for widget in self.input_list_frame.winfo_children():
             widget.destroy()
@@ -428,7 +428,7 @@ class ModelEditorPage(ttk.Frame):
                 row=index + 1, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
             )
 
-    def update_connection_outputs(self):
+    def update_relationship_outputs(self):
         # Clear existing output widgets:
         for widget in self.output_list_frame.winfo_children():
             widget.destroy()
@@ -468,7 +468,7 @@ class ModelEditorPage(ttk.Frame):
         self.name_entry.insert(0, self.selected_entity["name"])
         self.type_combobox.set(self.selected_entity["type"])
         self.update_property_editor()
-        self.update_connection_editor()
+        self.update_relationship_editor()
 
     def load_model(self):
         try:
@@ -645,7 +645,7 @@ class ModelEditorPage(ttk.Frame):
         # Section frames:
         self.basic_editor = ttk.Frame(self.editor)
         self.property_editor = ttk.Frame(self.editor)
-        self.connection_editor = ttk.Frame(self.editor)
+        self.relationship_editor = ttk.Frame(self.editor)
         self.button_frame = ttk.Frame(self.editor)
 
         # Grid (property editor):
@@ -655,9 +655,9 @@ class ModelEditorPage(ttk.Frame):
         # Grid (button frame):
         self.button_frame.columnconfigure(0, weight=1)
 
-        # Grid (connection editor):
-        self.connection_editor.rowconfigure(0, weight=1)
-        self.connection_editor.columnconfigure(0, weight=1)
+        # Grid (relationship editor):
+        self.relationship_editor.rowconfigure(0, weight=1)
+        self.relationship_editor.columnconfigure(0, weight=1)
 
         # Property editor widgets:
         self.property_canvas = tk.Canvas(self.property_editor)
@@ -690,38 +690,40 @@ class ModelEditorPage(ttk.Frame):
         self.property_canvas.grid(row=0, column=0, sticky="nsew")
         self.property_scrollbar.grid(row=0, column=1, sticky="ns")
 
-        # Connection editor widgets:
-        self.connection_canvas = tk.Canvas(self.connection_editor)
-        self.connection_scrollbar = ttk.Scrollbar(
-            self.connection_editor,
+        # Relationship editor widgets:
+        self.relationship_canvas = tk.Canvas(self.relationship_editor)
+        self.relationship_scrollbar = ttk.Scrollbar(
+            self.relationship_editor,
             orient="vertical",
-            command=self.connection_canvas.yview,
+            command=self.relationship_canvas.yview,
         )
-        self.connection_content = ttk.Frame(self.connection_canvas)
-        self.connection_canvas.configure(yscrollcommand=self.connection_scrollbar.set)
+        self.relationship_content = ttk.Frame(self.relationship_canvas)
+        self.relationship_canvas.configure(
+            yscrollcommand=self.relationship_scrollbar.set
+        )
 
-        # Connection content:
-        self.connection_window = self.connection_canvas.create_window(
-            (0, 0), window=self.connection_content, anchor="nw"
+        # Relationship content:
+        self.relationship_window = self.relationship_canvas.create_window(
+            (0, 0), window=self.relationship_content, anchor="nw"
         )
 
         # Event binding:
-        self.connection_content.bind(
+        self.relationship_content.bind(
             "<Configure>",
-            lambda event: self.connection_canvas.configure(
-                scrollregion=self.connection_canvas.bbox("all")
+            lambda event: self.relationship_canvas.configure(
+                scrollregion=self.relationship_canvas.bbox("all")
             ),
         )
-        self.connection_canvas.bind(
+        self.relationship_canvas.bind(
             "<Configure>",
-            lambda event: self.connection_canvas.itemconfigure(
-                self.connection_window, width=event.width
+            lambda event: self.relationship_canvas.itemconfigure(
+                self.relationship_window, width=event.width
             ),
         )
 
-        # Display connection editor widgets:
-        self.connection_canvas.grid(row=0, column=0, sticky="nsew")
-        self.connection_scrollbar.grid(row=0, column=1, sticky="ns")
+        # Display relationship editor widgets:
+        self.relationship_canvas.grid(row=0, column=0, sticky="nsew")
+        self.relationship_scrollbar.grid(row=0, column=1, sticky="ns")
 
         # Display section frames:
         self.basic_editor.grid(
@@ -730,7 +732,7 @@ class ModelEditorPage(ttk.Frame):
         self.property_editor.grid(
             row=1, column=0, sticky="nsew", padx=PAD_WIDGET, pady=PAD_WIDGET
         )
-        self.connection_editor.grid(
+        self.relationship_editor.grid(
             row=1, column=1, sticky="nsew", padx=PAD_WIDGET, pady=PAD_WIDGET
         )
         self.button_frame.grid(
