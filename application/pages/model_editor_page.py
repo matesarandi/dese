@@ -22,6 +22,10 @@ class ModelEditorPage(ttk.Frame):
         self.input_count = 0
         self.output_count = 0
         self.property_entries = {}
+        self.input_comboboxes = []
+        self.output_comboboxes = []
+        self.input_relationship_ids = []
+        self.output_relationship_ids = []
         self.load_model()
         self.create_widgets()
 
@@ -38,6 +42,18 @@ class ModelEditorPage(ttk.Frame):
             number += 1
 
         return f"E{number:03d}"
+
+    def generate_relationship_id(self):
+        existing_ids = [
+            relationship["id"] for relationship in self.model_data["relationships"]
+        ]
+
+        number = 1
+
+        while f"R{number:03d}" in existing_ids:
+            number += 1
+
+        return f"R{number:03d}"
 
     # ----------------------------
     # Add Entity Window
@@ -265,6 +281,15 @@ class ModelEditorPage(ttk.Frame):
                 padx=PAD_WIDGET,
                 pady=PAD_WIDGET,
             )
+
+            # Event binding:
+            entry.bind(
+                "<KeyRelease>",
+                lambda event, property_name=property_name: self.update_entity_property(
+                    property_name, event
+                ),
+            )
+
             self.property_entries[property_name] = entry
 
     def update_relationship_editor(self):
@@ -287,8 +312,11 @@ class ModelEditorPage(ttk.Frame):
         output_min = entity_schema["output_min"]
         output_max = entity_schema["output_max"]
 
-        self.input_count = input_min
-        self.output_count = output_min
+        input_relationships = self.get_input_relationships()
+        output_relationships = self.get_output_relationships()
+
+        self.input_count = max(input_min, len(input_relationships))
+        self.output_count = max(output_min, len(output_relationships))
 
         # Input count:
 
@@ -308,13 +336,13 @@ class ModelEditorPage(ttk.Frame):
 
         self.input_count_spinbox = ttk.Spinbox(
             self.input_frame,
-            from_=input_min,
+            from_=self.input_count,
             to=input_max,
             state="readonly",
             width=SPINBOX_WIDTH,
             command=self.update_relationship_inputs,
         )
-        self.input_count_spinbox.set(input_min)
+        self.input_count_spinbox.set(self.input_count)
         self.input_count_spinbox.grid(
             row=0, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
         )
@@ -337,13 +365,13 @@ class ModelEditorPage(ttk.Frame):
 
         self.output_count_spinbox = ttk.Spinbox(
             self.output_frame,
-            from_=output_min,
+            from_=self.output_count,
             to=output_max,
             state="readonly",
             width=SPINBOX_WIDTH,
             command=self.update_relationship_outputs,
         )
-        self.output_count_spinbox.set(output_min)
+        self.output_count_spinbox.set(self.output_count)
         self.output_count_spinbox.grid(
             row=0, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
         )
@@ -360,8 +388,54 @@ class ModelEditorPage(ttk.Frame):
         self.update_relationship_inputs()
         self.update_relationship_outputs()
 
-    def get_allowed_input_entities(self):
+    def has_available_output(self, entity_id, relationship_id=None):
+        entity = next(
+            entity
+            for entity in self.model_data["entities"]
+            if entity["id"] == entity_id
+        )
+
+        entity_schema = self.schema.get_entity_schema(
+            self.model_data["domain"], entity["type"]
+        )
+
+        output_relationships = [
+            relationship
+            for relationship in self.model_data["relationships"]
+            if (
+                relationship["source"] == entity_id
+                and relationship["id"] != relationship_id
+            )
+        ]
+
+        return len(output_relationships) < entity_schema["output_max"]
+
+    def has_available_input(self, entity_id, relationship_id=None):
+        entity = next(
+            entity
+            for entity in self.model_data["entities"]
+            if entity["id"] == entity_id
+        )
+
+        entity_schema = self.schema.get_entity_schema(
+            self.model_data["domain"], entity["type"]
+        )
+
+        input_relationships = [
+            relationship
+            for relationship in self.model_data["relationships"]
+            if (
+                relationship["target"] == entity_id
+                and relationship["id"] != relationship_id
+            )
+        ]
+
+        return len(input_relationships) < entity_schema["input_max"]
+
+    def get_allowed_input_entities(self, relationship_id=None):
         selected_type = self.selected_entity["type"]
+        selected_entity_id = self.selected_entity["id"]
+
         domain = self.schema.get_domain(self.model_data["domain"])
         relationship_allowances = domain["relationship_allowances"]
 
@@ -376,12 +450,29 @@ class ModelEditorPage(ttk.Frame):
             for entity in self.model_data["entities"]
             if (
                 entity["type"] in allowed_source_types
-                and entity["id"] != self.selected_entity["id"]
+                and entity["id"] != selected_entity_id
+                and not any(
+                    (
+                        (
+                            relationship["source"] == entity["id"]
+                            and relationship["target"] == selected_entity_id
+                        )
+                        or (
+                            relationship["source"] == selected_entity_id
+                            and relationship["target"] == entity["id"]
+                        )
+                    )
+                    and relationship["id"] != relationship_id
+                    for relationship in self.model_data["relationships"]
+                )
+                and self.has_available_output(entity["id"], relationship_id)
             )
         ]
 
-    def get_allowed_output_entities(self):
+    def get_allowed_output_entities(self, relationship_id=None):
         selected_type = self.selected_entity["type"]
+        selected_entity_id = self.selected_entity["id"]
+
         domain = self.schema.get_domain(self.model_data["domain"])
         relationship_allowances = domain["relationship_allowances"]
 
@@ -392,7 +483,22 @@ class ModelEditorPage(ttk.Frame):
             for entity in self.model_data["entities"]
             if (
                 entity["type"] in allowed_target_types
-                and entity["id"] != self.selected_entity["id"]
+                and entity["id"] != selected_entity_id
+                and not any(
+                    (
+                        (
+                            relationship["source"] == selected_entity_id
+                            and relationship["target"] == entity["id"]
+                        )
+                        or (
+                            relationship["source"] == entity["id"]
+                            and relationship["target"] == selected_entity_id
+                        )
+                    )
+                    and relationship["id"] != relationship_id
+                    for relationship in self.model_data["relationships"]
+                )
+                and self.has_available_input(entity["id"], relationship_id)
             )
         ]
 
@@ -401,25 +507,53 @@ class ModelEditorPage(ttk.Frame):
         for widget in self.input_list_frame.winfo_children():
             widget.destroy()
 
+        self.input_comboboxes.clear()
+        self.input_relationship_ids.clear()
+
         if self.selected_entity is None:
             return
 
-        input_count = (
-            int(self.input_count_spinbox.get())
-            if self.input_count_spinbox is not None
-            else self.input_count
+        input_relationships = self.get_input_relationships()
+
+        minimum_input_count = max(
+            self.schema.get_entity_schema(
+                self.model_data["domain"], self.selected_entity["type"]
+            )["input_min"],
+            len(input_relationships),
         )
 
-        allowed_entities = self.get_allowed_input_entities()
+        input_count = max(int(self.input_count_spinbox.get()), minimum_input_count)
+
+        input_relationships = self.get_input_relationships()
 
         for index in range(input_count):
             label = ttk.Label(self.input_list_frame, text=f"Input {index + 1}:")
             combobox = ttk.Combobox(
                 self.input_list_frame,
                 state="readonly",
-                values=[entity["name"] for entity in allowed_entities],
                 width=INPUT_WIDTH,
             )
+
+            self.input_comboboxes.append(combobox)
+
+            if index < len(input_relationships):
+                relationship = input_relationships[index]
+                relationship_id = relationship["id"]
+
+                self.input_relationship_ids.append(relationship_id)
+
+                source_entity_name = self.get_entity_name(relationship["source"])
+                combobox.set(source_entity_name)
+
+            else:
+                relationship_id = None
+                self.input_relationship_ids.append(None)
+
+            allowed_entities = self.get_allowed_input_entities(relationship_id)
+            combobox["values"] = [""] + [entity["name"] for entity in allowed_entities]
+
+            # Event binding:
+            combobox.bind("<<ComboboxSelected>>", self.relationship_selected)
 
             label.grid(
                 row=index + 1, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
@@ -433,25 +567,53 @@ class ModelEditorPage(ttk.Frame):
         for widget in self.output_list_frame.winfo_children():
             widget.destroy()
 
+        self.output_comboboxes.clear()
+        self.output_relationship_ids.clear()
+
         if self.selected_entity is None:
             return
 
-        output_count = (
-            int(self.output_count_spinbox.get())
-            if self.output_count_spinbox is not None
-            else self.output_count
+        output_relationships = self.get_output_relationships()
+
+        minimum_output_count = max(
+            self.schema.get_entity_schema(
+                self.model_data["domain"], self.selected_entity["type"]
+            )["output_min"],
+            len(output_relationships),
         )
 
-        allowed_entities = self.get_allowed_output_entities()
+        output_count = max(int(self.output_count_spinbox.get()), minimum_output_count)
+
+        output_relationships = self.get_output_relationships()
 
         for index in range(output_count):
             label = ttk.Label(self.output_list_frame, text=f"Output {index + 1}:")
             combobox = ttk.Combobox(
                 self.output_list_frame,
                 state="readonly",
-                values=[entity["name"] for entity in allowed_entities],
                 width=INPUT_WIDTH,
             )
+
+            self.output_comboboxes.append(combobox)
+
+            if index < len(output_relationships):
+                relationship = output_relationships[index]
+                relationship_id = relationship["id"]
+
+                self.output_relationship_ids.append(relationship_id)
+
+                target_entity_name = self.get_entity_name(relationship["target"])
+                combobox.set(target_entity_name)
+
+            else:
+                relationship_id = None
+                self.output_relationship_ids.append(None)
+
+            allowed_entities = self.get_allowed_output_entities(relationship_id)
+            combobox["values"] = [""] + [entity["name"] for entity in allowed_entities]
+
+            # Event binding:
+            combobox.bind("<<ComboboxSelected>>", self.relationship_selected)
 
             label.grid(
                 row=index, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
@@ -517,6 +679,223 @@ class ModelEditorPage(ttk.Frame):
                     self.selected_entity = entity
                     self.update_entity_editor()
                     break
+
+    def get_entity_name(self, entity_id):
+        for entity in self.model_data["entities"]:
+            if entity["id"] == entity_id:
+                return entity["name"]
+
+        return ""
+
+    def get_entity_id(self, entity_name):
+        for entity in self.model_data["entities"]:
+            if entity["name"] == entity_name:
+                return entity["id"]
+
+        return None
+
+    def get_relationships_for_entity(self, entity_id):
+        return [
+            relationship
+            for relationship in self.model_data["relationships"]
+            if (
+                relationship["source"] == entity_id
+                or relationship["target"] == entity_id
+            )
+        ]
+
+    def get_input_relationships(self):
+        if self.selected_entity is None:
+            return []
+
+        entity_id = self.selected_entity["id"]
+
+        return [
+            relationship
+            for relationship in self.model_data["relationships"]
+            if relationship["target"] == entity_id
+        ]
+
+    def get_output_relationships(self):
+        if self.selected_entity is None:
+            return []
+
+        entity_id = self.selected_entity["id"]
+
+        return [
+            relationship
+            for relationship in self.model_data["relationships"]
+            if relationship["source"] == entity_id
+        ]
+
+    def get_relationship_at_index(self, relationships, index):
+        if index < len(relationships):
+            return relationships[index]
+
+        return None
+
+    def update_entity_name(self, event=None):
+        if self.selected_entity is None:
+            return
+
+        new_name = self.name_entry.get()
+
+        if self.selected_entity["name"] == new_name:
+            return
+
+        self.selected_entity["name"] = new_name
+
+        selected_item = self.entity_table.selection()
+
+        if selected_item:
+            self.entity_table.item(
+                selected_item[0],
+                values=(
+                    self.selected_entity["id"],
+                    self.selected_entity["name"],
+                    self.selected_entity["type"],
+                    "",
+                    "",
+                ),
+            )
+
+        self.model_changed_callback(True)
+
+    def update_entity_type(self, event=None):
+        if self.selected_entity is None:
+            return
+
+        new_type = self.type_combobox.get()
+
+        if self.selected_entity["type"] == new_type:
+            return
+
+        self.selected_entity["type"] = new_type
+
+        selected_item = self.entity_table.selection()
+
+        if selected_item:
+            self.entity_table.item(
+                selected_item[0],
+                values=(
+                    self.selected_entity["id"],
+                    self.selected_entity["name"],
+                    self.selected_entity["type"],
+                    "",
+                    "",
+                ),
+            )
+
+        self.update_property_editor()
+        self.update_relationship_editor()
+        self.model_changed_callback(True)
+
+    def update_entity_property(self, property_name, event=None):
+        if self.selected_entity is None:
+            return
+
+        new_value = self.property_entries[property_name].get()
+
+        if self.selected_entity["properties"].get(property_name) == new_value:
+            return
+
+        self.selected_entity["properties"][property_name] = new_value
+        self.model_changed_callback(True)
+
+    def relationship_selected(self, event):
+        entity_name = event.widget.get()
+
+        if self.selected_entity is None:
+            return
+
+        selected_entity_id = self.selected_entity["id"]
+
+        if event.widget in self.input_comboboxes:
+            index = self.input_comboboxes.index(event.widget)
+            relationship_id = self.input_relationship_ids[index]
+
+            if not entity_name:
+                if relationship_id is not None:
+                    self.model_data["relationships"] = [
+                        relationship
+                        for relationship in self.model_data["relationships"]
+                        if relationship["id"] != relationship_id
+                    ]
+
+                    self.input_relationship_ids[index] = None
+                    self.model_changed_callback(True)
+
+                return
+
+            entity_id = self.get_entity_id(entity_name)
+
+            if entity_id is None:
+                return
+
+            if relationship_id is None:
+                relationship = {
+                    "id": self.generate_relationship_id(),
+                    "source": entity_id,
+                    "target": selected_entity_id,
+                }
+
+                self.model_data["relationships"].append(relationship)
+                self.input_relationship_ids[index] = relationship["id"]
+
+            else:
+                relationship = next(
+                    relationship
+                    for relationship in self.model_data["relationships"]
+                    if relationship["id"] == relationship_id
+                )
+
+                relationship["source"] = entity_id
+
+        elif event.widget in self.output_comboboxes:
+            index = self.output_comboboxes.index(event.widget)
+            relationship_id = self.output_relationship_ids[index]
+
+            if not entity_name:
+                if relationship_id is not None:
+                    self.model_data["relationships"] = [
+                        relationship
+                        for relationship in self.model_data["relationships"]
+                        if relationship["id"] != relationship_id
+                    ]
+
+                    self.output_relationship_ids[index] = None
+                    self.model_changed_callback(True)
+
+                return
+
+            entity_id = self.get_entity_id(entity_name)
+
+            if entity_id is None:
+                return
+
+            if relationship_id is None:
+                relationship = {
+                    "id": self.generate_relationship_id(),
+                    "source": selected_entity_id,
+                    "target": entity_id,
+                }
+
+                self.model_data["relationships"].append(relationship)
+                self.output_relationship_ids[index] = relationship["id"]
+
+            else:
+                relationship = next(
+                    relationship
+                    for relationship in self.model_data["relationships"]
+                    if relationship["id"] == relationship_id
+                )
+
+                relationship["target"] = entity_id
+
+        else:
+            return
+
+        self.model_changed_callback(True)
 
     def update_entity(self):
         if self.selected_entity is None:
@@ -597,7 +976,7 @@ class ModelEditorPage(ttk.Frame):
             command=self.delete_entity,
         )
 
-        # Event bindings:
+        # Event binding:
         self.entity_table.bind("<<TreeviewSelect>>", self.entity_selected)
 
         # Column headings:
@@ -747,15 +1126,13 @@ class ModelEditorPage(ttk.Frame):
             self.basic_editor, state="readonly", width=INPUT_WIDTH
         )
 
-        self.update_entity_button = ttk.Button(
-            self.button_frame,
-            text="Update",
-            width=BUTTON_WIDTH,
-            command=self.update_entity,
-        )
         self.save_model_button = ttk.Button(
             self.button_frame, text="Save", width=BUTTON_WIDTH, command=self.save_model
         )
+
+        # Event binding:
+        self.name_entry.bind("<KeyRelease>", self.update_entity_name)
+        self.type_combobox.bind("<<ComboboxSelected>>", self.update_entity_type)
 
         # Display frame widget:
         self.editor.grid(
@@ -774,9 +1151,6 @@ class ModelEditorPage(ttk.Frame):
         )
         self.type_combobox.grid(
             row=0, column=3, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-        )
-        self.update_entity_button.grid(
-            row=0, column=0, sticky="e", padx=PAD_WIDGET, pady=PAD_WIDGET
         )
         self.save_model_button.grid(
             row=0, column=1, sticky="e", padx=PAD_WIDGET, pady=PAD_WIDGET
