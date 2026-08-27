@@ -1029,8 +1029,18 @@ class ModelEditorPage(ttk.Frame):
 
         # Section frames:
         self.basic_editor = ttk.Frame(self.editor)
-        self.property_editor = ttk.Frame(self.editor)
-        self.relationship_editor = ttk.Frame(self.editor)
+        self.property_editor = ttk.LabelFrame(
+            self.editor,
+            text="Properties",
+            style="DESE.Section.TLabelframe",
+            padding=PAD_FRAME_IN,
+        )
+        self.relationship_editor = ttk.LabelFrame(
+            self.editor,
+            text="Relationships",
+            style="DESE.Section.TLabelframe",
+            padding=PAD_FRAME_IN,
+        )
         self.button_frame = ttk.Frame(self.editor)
 
         # Grid (property editor):
