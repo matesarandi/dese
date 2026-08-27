@@ -645,9 +645,6 @@ class ModelEditorPage(ttk.Frame):
         try:
             with open(self.model_path, "r") as file:
                 self.model_data = json.load(file)
-            print(
-                self.schema.get_entity_schema(self.model_data["domain"], "Processing")
-            )
 
         except Exception as error:
             messagebox.showerror(
@@ -734,16 +731,6 @@ class ModelEditorPage(ttk.Frame):
 
         return None
 
-    def get_relationships_for_entity(self, entity_id):
-        return [
-            relationship
-            for relationship in self.model_data["relationships"]
-            if (
-                relationship["source"] == entity_id
-                or relationship["target"] == entity_id
-            )
-        ]
-
     def get_input_relationships(self):
         if self.selected_entity is None:
             return []
@@ -767,12 +754,6 @@ class ModelEditorPage(ttk.Frame):
             for relationship in self.model_data["relationships"]
             if relationship["source"] == entity_id
         ]
-
-    def get_relationship_at_index(self, relationships, index):
-        if index < len(relationships):
-            return relationships[index]
-
-        return None
 
     def update_entity_name(self, event=None):
         if self.selected_entity is None:
@@ -921,35 +902,6 @@ class ModelEditorPage(ttk.Frame):
 
         self.refresh_entity_table()
         self.model_changed_callback(True)
-
-    def update_entity(self):
-        if self.selected_entity is None:
-            return
-
-        # Get input:
-        new_name = self.name_entry.get()
-        new_type = self.type_combobox.get()
-        new_properties = {
-            property_name: entry.get()
-            for property_name, entry in self.property_entries.items()
-        }
-
-        # Check for changes:
-        name_changed = self.selected_entity["name"] != new_name
-        type_changed = self.selected_entity["type"] != new_type
-        properties_changed = self.selected_entity["properties"] != new_properties
-
-        # Update entity:
-        self.selected_entity["name"] = new_name
-        self.selected_entity["type"] = new_type
-        self.selected_entity["properties"] = new_properties
-
-        # Refresh entity table:
-        self.refresh_entity_table()
-
-        # Model changed:
-        if name_changed or type_changed or properties_changed:
-            self.model_changed_callback(True)
 
     # ==========================
     # Structure Tab
