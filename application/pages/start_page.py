@@ -15,9 +15,9 @@ class StartPage(ttk.Frame):
         self.select_model_callback = select_model_callback
         self.create_widgets()
 
-    # ----------------------------
-    # METHODS
-    # ----------------------------
+    # ==========================
+    # Methods
+    # ==========================
 
     def edit_model(self):
         if self.selected_model_path is None:
@@ -58,15 +58,13 @@ class StartPage(ttk.Frame):
             self.new_model_path = save_path
             self.created_model_label.config(text=save_path.name)
 
-    # ----------------------------
-    # START PAGE
-    # ----------------------------
+    # Start Page
+    # ==========================
 
     def create_widgets(self):
 
-        # ----------------------------
         # Welcome
-        # ----------------------------
+        # ==========================
 
         # Grid:
         self.rowconfigure(0, weight=1)
@@ -95,9 +93,8 @@ class StartPage(ttk.Frame):
         self.subtitle_label.grid(row=1, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET)
         self.separator.grid(row=2, column=0, sticky="ew")
 
-        # ----------------------------
         # Open Existing Model Frame
-        # ----------------------------
+        # ==========================
 
         # Frame widget:
         self.open_frame = ttk.LabelFrame(
@@ -152,9 +149,8 @@ class StartPage(ttk.Frame):
             row=2, column=1, sticky="e", padx=PAD_WIDGET, pady=PAD_WIDGET
         )
 
-        # ----------------------------
         # Create New Model Frame
-        # ----------------------------
+        # ==========================
 
         # Frame widget:
         self.new_frame = ttk.LabelFrame(

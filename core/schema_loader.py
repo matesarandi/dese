@@ -7,9 +7,9 @@ class SchemaLoader:
         self.schema_data = None
         self.load_schema()
 
-    # ----------------------------
-    # METHODS
-    # ----------------------------
+    # ==========================
+    # Methods
+    # ==========================
 
     def load_schema(self):
         with open(self.schema_path, "r") as file:

@@ -29,9 +29,9 @@ class ModelEditorPage(ttk.Frame):
         self.load_model()
         self.create_widgets()
 
-    # ----------------------------
-    # METHODS
-    # ----------------------------
+    # ==========================
+    # Methods
+    # ==========================
 
     def generate_entity_id(self):
         existing_ids = [entity["id"] for entity in self.model_data["entities"]]
@@ -55,9 +55,9 @@ class ModelEditorPage(ttk.Frame):
 
         return f"R{number:03d}"
 
-    # ----------------------------
+    # ==========================
     # Add Entity Window
-    # ----------------------------
+    # ==========================
 
     def add_entity(self):
         # Window:
@@ -186,6 +186,16 @@ class ModelEditorPage(ttk.Frame):
             entity
             for entity in self.model_data["entities"]
             if entity["id"] != entity_id
+        ]
+
+        # Delete relationships:
+        self.model_data["relationships"] = [
+            relationship
+            for relationship in self.model_data["relationships"]
+            if (
+                relationship["source"] != entity_id
+                and relationship["target"] != entity_id
+            )
         ]
 
         # Refresh entity table:
@@ -376,9 +386,8 @@ class ModelEditorPage(ttk.Frame):
             row=0, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
         )
 
-        # ----------------------------
         # Relationship Frame Layout
-        # ----------------------------
+        # ==========================
 
         # Grid:
         self.relationship_content.columnconfigure(0, weight=1, uniform="relationship")
@@ -661,9 +670,9 @@ class ModelEditorPage(ttk.Frame):
         self.entity_table.delete(*self.entity_table.get_children())
         self.populate_entity_table()
 
-    # ----------------------------
-    # EVENT CALLBACKS
-    # ----------------------------
+    # ==========================
+    # Event Callbacks
+    # ==========================
 
     def entity_selected(self, event):
         selected_item = self.entity_table.selection()
@@ -926,9 +935,9 @@ class ModelEditorPage(ttk.Frame):
         if name_changed or type_changed or properties_changed:
             self.model_changed_callback(True)
 
-    # ----------------------------
-    # STRUCTURE TAB
-    # ----------------------------
+    # ==========================
+    # Structure Tab
+    # ==========================
 
     def create_structure_tab(self):
         # Grid:
@@ -936,9 +945,8 @@ class ModelEditorPage(ttk.Frame):
         self.structure_tab.rowconfigure(1, weight=1)
         self.structure_tab.columnconfigure(0, weight=1)
 
-        # ----------------------------
         # Entity Table
-        # ----------------------------
+        # ==========================
 
         # Frame widget:
         self.entity_table_frame = ttk.LabelFrame(
@@ -1000,9 +1008,8 @@ class ModelEditorPage(ttk.Frame):
         self.add_entity_button.grid(row=0, column=0, padx=PAD_WIDGET)
         self.delete_entity_button.grid(row=0, column=1, padx=PAD_WIDGET)
 
-        # ----------------------------
         # Editor
-        # ----------------------------
+        # ==========================
 
         # Frame widget:
         self.editor = ttk.LabelFrame(
@@ -1017,9 +1024,8 @@ class ModelEditorPage(ttk.Frame):
         self.editor.columnconfigure(0, weight=1)
         self.editor.columnconfigure(1, weight=1)
 
-        # ----------------------------
         # Editor Sections
-        # ----------------------------
+        # ==========================
 
         # Section frames:
         self.basic_editor = ttk.Frame(self.editor)
@@ -1156,9 +1162,9 @@ class ModelEditorPage(ttk.Frame):
             row=0, column=1, sticky="e", padx=PAD_WIDGET, pady=PAD_WIDGET
         )
 
-    # ----------------------------
-    # MODEL EDITOR PAGE
-    # ----------------------------
+    # ==========================
+    # Model Editor Page
+    # ==========================
 
     def create_widgets(self):
         # Grid:
@@ -1166,16 +1172,14 @@ class ModelEditorPage(ttk.Frame):
         self.rowconfigure(1, weight=1)
         self.columnconfigure(0, weight=1)
 
-        # ----------------------------
         # Notebook
-        # ----------------------------
+        # ==========================
 
         # Widget:
         self.notebook = ttk.Notebook(self)
 
-        # ----------------------------
         # Tabs
-        # ----------------------------
+        # ==========================
 
         # Child widgets:
         self.structure_tab = ttk.Frame(self.notebook)

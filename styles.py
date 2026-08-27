@@ -1,8 +1,8 @@
 from tkinter import ttk
 
-# ----------------------------
-# STYLE CONFIGURATION
-# ----------------------------
+# ==========================
+# Style Configuration
+# ==========================
 
 
 def configure_styles():

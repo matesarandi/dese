@@ -22,9 +22,9 @@ class DESEApp(tk.Tk):
         self.create_widgets()
         self.show_start_page()
 
-    # ----------------------------
-    # METHODS
-    # ----------------------------
+    # ==========================
+    # Methods
+    # ==========================
 
     def update_domain_selector(self):
         domain = self.model_editor_page.model_data["domain"]
@@ -169,9 +169,8 @@ class DESEApp(tk.Tk):
 
     def create_menu(self):
 
-        # ----------------------------
         # Menu Bar
-        # ----------------------------
+        # ==========================
 
         # Widgets:
         self.menu_bar = tk.Menu(self)
@@ -186,9 +185,8 @@ class DESEApp(tk.Tk):
 
     def create_navigation(self):
 
-        # ----------------------------
         # Navigation Bar
-        # ----------------------------
+        # ==========================
 
         # Widgets:
         self.navigation_frame = ttk.Frame(self)
@@ -230,15 +228,14 @@ class DESEApp(tk.Tk):
         self.domain_label.grid(row=0, column=5, padx=PAD_WIDGET, pady=PAD_WIDGET)
         self.domain_combobox.grid(row=0, column=6, padx=PAD_WIDGET, pady=PAD_WIDGET)
 
-    # ----------------------------
-    # MAIN CONTAINER
-    # ----------------------------
+    # ==========================
+    # Main Container
+    # ==========================
 
     def create_widgets(self):
 
-        # ----------------------------
         # Container
-        # ----------------------------
+        # ==========================
 
         # Widgets:
         self.container = ttk.Frame(self)
@@ -251,9 +248,9 @@ class DESEApp(tk.Tk):
         self.container.grid(row=1, column=0, sticky="nsew")
 
 
-# ----------------------------
-# MAIN LOOP
-# ----------------------------
+# ==========================
+# Main Loop
+# ==========================
 
 if __name__ == "__main__":
     app = DESEApp()
