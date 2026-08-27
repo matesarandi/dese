@@ -662,13 +662,44 @@ class ModelEditorPage(ttk.Frame):
 
     def populate_entity_table(self):
         for entity in self.model_data["entities"]:
+            input_names = [
+                self.get_entity_name(relationship["source"])
+                for relationship in self.model_data["relationships"]
+                if relationship["target"] == entity["id"]
+            ]
+
+            output_names = [
+                self.get_entity_name(relationship["target"])
+                for relationship in self.model_data["relationships"]
+                if relationship["source"] == entity["id"]
+            ]
+
+            inputs = ", ".join(input_names)
+            outputs = ", ".join(output_names)
+
             self.entity_table.insert(
-                "", "end", values=(entity["id"], entity["name"], entity["type"], "", "")
+                "",
+                "end",
+                values=(entity["id"], entity["name"], entity["type"], inputs, outputs),
             )
 
     def refresh_entity_table(self):
+        selected_entity_id = None
+
+        selected_item = self.entity_table.selection()
+
+        if selected_item:
+            selected_entity_id = self.entity_table.item(selected_item[0])["values"][0]
+
         self.entity_table.delete(*self.entity_table.get_children())
         self.populate_entity_table()
+
+        if selected_entity_id:
+            for item in self.entity_table.get_children():
+                if self.entity_table.item(item)["values"][0] == selected_entity_id:
+                    self.entity_table.selection_set(item)
+                    self.entity_table.focus(item)
+                    break
 
     # ==========================
     # Event Callbacks
@@ -757,16 +788,7 @@ class ModelEditorPage(ttk.Frame):
         selected_item = self.entity_table.selection()
 
         if selected_item:
-            self.entity_table.item(
-                selected_item[0],
-                values=(
-                    self.selected_entity["id"],
-                    self.selected_entity["name"],
-                    self.selected_entity["type"],
-                    "",
-                    "",
-                ),
-            )
+            self.refresh_entity_table()
 
         self.model_changed_callback(True)
 
@@ -784,16 +806,7 @@ class ModelEditorPage(ttk.Frame):
         selected_item = self.entity_table.selection()
 
         if selected_item:
-            self.entity_table.item(
-                selected_item[0],
-                values=(
-                    self.selected_entity["id"],
-                    self.selected_entity["name"],
-                    self.selected_entity["type"],
-                    "",
-                    "",
-                ),
-            )
+            self.refresh_entity_table()
 
         self.update_property_editor()
         self.update_relationship_editor()
@@ -832,6 +845,7 @@ class ModelEditorPage(ttk.Frame):
                     ]
 
                     self.input_relationship_ids[index] = None
+                    self.refresh_entity_table()
                     self.model_changed_callback(True)
 
                 return
@@ -873,6 +887,7 @@ class ModelEditorPage(ttk.Frame):
                     ]
 
                     self.output_relationship_ids[index] = None
+                    self.refresh_entity_table()
                     self.model_changed_callback(True)
 
                 return
@@ -904,6 +919,7 @@ class ModelEditorPage(ttk.Frame):
         else:
             return
 
+        self.refresh_entity_table()
         self.model_changed_callback(True)
 
     def update_entity(self):
@@ -993,6 +1009,12 @@ class ModelEditorPage(ttk.Frame):
         self.entity_table.heading("type", text="Type")
         self.entity_table.heading("inputs", text="Inputs")
         self.entity_table.heading("outputs", text="Outputs")
+
+        self.entity_table.column("id", width=50, stretch=False)
+        self.entity_table.column("name", width=110)
+        self.entity_table.column("type", width=110)
+        self.entity_table.column("inputs", width=250)
+        self.entity_table.column("outputs", width=250)
 
         # Display frame widget:
         self.entity_table_frame.grid(
