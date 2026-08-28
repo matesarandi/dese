@@ -1,8 +1,6 @@
 {
   "domain": null,
-  "flow_object": {
-    "name": null
-  },
+  "flow_objects": [],
   "entities": [
     {
       "id": "E001",

@@ -16,18 +16,41 @@
     }
   },
 
-  "base_flow_object_schema": {
-    "required_properties": {
-      "id": {
-        "type": "string",
-        "description": "Unique identifier automatically generated for the Flow Object."
-      },
-      "name": {
-        "type": "string",
-        "description": "Human-readable name of the Flow Object."
-      }
+"base_flow_object_schema": {
+  "required_properties": {
+    "name": {
+      "type": "string",
+      "description": "Human-readable name of the Flow Object."
     }
   },
+
+  "properties": {
+    "entry_entity": {
+      "type": "string",
+      "description": "Identifier of the Processing Entity where the Flow Object enters the model."
+    },
+    "initial_readiness": {
+      "type": "number",
+      "description": "Initial readiness of the Flow Object when it enters the process."
+    },
+    "process_requirements": {
+      "type": "object",
+      "description": "Defines the required Process Supply quantities for each Processing Entity.",
+      "structure": {
+        "processing_entity_id": {
+          "type": "object",
+          "description": "Processing Entity and its required Process Supply quantities.",
+          "structure": {
+            "process_supply_entity_id": {
+              "type": "number",
+              "description": "Required quantity of the Process Supply."
+            }
+          }
+        }
+      }
+    }
+  }
+},
 
   "base_relationship_schema": {
     "required_properties": {

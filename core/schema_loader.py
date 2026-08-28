@@ -44,6 +44,9 @@ class SchemaLoader:
 
         return None
 
+    def get_flow_object_schema(self):
+        return self.schema_data["base_flow_object_schema"]
+
     def get_relationship_allowances(self, domain_name):
         domain = self.get_domain(domain_name)
 

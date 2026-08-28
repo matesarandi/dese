@@ -2,6 +2,7 @@ import json
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from dese.application.pages.flow_object_editor import FlowObjectEditor
 from dese.constants import (
     BUTTON_WIDTH,
     INPUT_WIDTH,
@@ -32,6 +33,9 @@ class ModelEditorPage(ttk.Frame):
     # ==========================
     # Methods
     # ==========================
+
+    def open_flow_object_editor(self):
+        FlowObjectEditor(self)
 
     def generate_entity_id(self):
         existing_ids = [entity["id"] for entity in self.model_data["entities"]]
@@ -1115,9 +1119,14 @@ class ModelEditorPage(ttk.Frame):
         self.type_combobox = ttk.Combobox(
             self.basic_editor, state="readonly", width=INPUT_WIDTH
         )
-
         self.save_model_button = ttk.Button(
             self.button_frame, text="Save", width=BUTTON_WIDTH, command=self.save_model
+        )
+        self.flow_objects_button = ttk.Button(
+            self.button_frame,
+            text="Flow Objects",
+            width=BUTTON_WIDTH,
+            command=self.open_flow_object_editor,
         )
 
         # Event binding:
@@ -1144,6 +1153,69 @@ class ModelEditorPage(ttk.Frame):
         )
         self.save_model_button.grid(
             row=0, column=1, sticky="e", padx=PAD_WIDGET, pady=PAD_WIDGET
+        )
+        self.flow_objects_button.grid(
+            row=0, column=0, sticky="e", padx=PAD_WIDGET, pady=PAD_WIDGET
+        )
+
+    # ==========================
+    # Visualization Tab
+    # ==========================
+
+    def create_visualization_tab(self):
+        # Grid:
+        self.visualization_tab.rowconfigure(0, weight=1)
+        self.visualization_tab.columnconfigure(0, weight=1)
+
+        # Canvas
+        # ==========================
+
+        # Widgets:
+        self.visualization_canvas = tk.Canvas(self.visualization_tab)
+        self.visualization_horizontal_scrollbar = ttk.Scrollbar(
+            self.visualization_tab,
+            orient="horizontal",
+            command=self.visualization_canvas.xview,
+        )
+        self.visualization_vertical_scrollbar = ttk.Scrollbar(
+            self.visualization_tab,
+            orient="vertical",
+            command=self.visualization_canvas.yview,
+        )
+
+        # Configuration:
+        self.visualization_canvas.configure(
+            xscrollcommand=self.visualization_horizontal_scrollbar.set,
+            yscrollcommand=self.visualization_vertical_scrollbar.set,
+        )
+
+        # Display widgets:
+        self.visualization_canvas.grid(row=0, column=0, sticky="nsew")
+        self.visualization_horizontal_scrollbar.grid(row=1, column=0, sticky="ew")
+        self.visualization_vertical_scrollbar.grid(row=0, column=1, sticky="ns")
+
+        # Process Frame
+        # ==========================
+
+        # Frame widget:
+        self.process_frame = ttk.LabelFrame(
+            self.visualization_canvas, text="Process", padding=PAD_FRAME_IN
+        )
+
+        # Child widgets:
+        self.process_label = ttk.Label(self.process_frame, text="Test Process")
+
+        # Display child widgets:
+        self.process_label.grid(row=0, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET)
+
+        # Display frame widget:
+        self.process_window = self.visualization_canvas.create_window(
+            100, 100, window=self.process_frame, anchor="nw"
+        )
+
+        # Scroll region:
+        self.visualization_canvas.configure(
+            scrollregion=self.visualization_canvas.bbox("all")
         )
 
     # ==========================
@@ -1180,6 +1252,7 @@ class ModelEditorPage(ttk.Frame):
 
         # Create tab content:
         self.create_structure_tab()
+        self.create_visualization_tab()
 
         # Populate entity table:
         self.populate_entity_table()
