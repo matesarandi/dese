@@ -78,6 +78,7 @@ class DESEApp(tk.Tk):
     def open_model_editor(self):
         if self.editing_model_path is None:
             return
+        
         self.show_model_editor_page()
 
     def save_model(self):
@@ -92,6 +93,7 @@ class DESEApp(tk.Tk):
 
         if changed:
             self.unsaved_label.config(text="⏺")
+            
         else:
             self.unsaved_label.config(text="")
 

@@ -46,6 +46,7 @@ class StartPage(ttk.Frame):
 
     def create_new_model(self):
         template_path = TEMPLATE_DIR / "empty_model.json"
+        
         save_path = filedialog.asksaveasfilename(
             title="Create New Model",
             defaultextension=".json",

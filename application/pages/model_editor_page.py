@@ -35,7 +35,9 @@ class ModelEditorPage(ttk.Frame):
     # ==========================
 
     def open_flow_object_editor(self):
-        FlowObjectEditor(self)
+        FlowObjectEditor(
+            self, self.model_data, self.schema, self.model_changed_callback
+        )
 
     def generate_entity_id(self):
         existing_ids = [entity["id"] for entity in self.model_data["entities"]]
@@ -333,6 +335,7 @@ class ModelEditorPage(ttk.Frame):
         self.output_count = max(output_min, len(output_relationships))
 
         # Input count:
+        # ==========================
 
         # Widgets:
         self.input_frame = ttk.Frame(self.relationship_content)
@@ -362,6 +365,7 @@ class ModelEditorPage(ttk.Frame):
         )
 
         # Output count:
+        # ==========================
 
         # Widgets:
         self.output_frame = ttk.Frame(self.relationship_content)

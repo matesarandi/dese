@@ -22,6 +22,7 @@ class SchemaLoader:
         for domain in self.schema_data["domains"]:
             if domain["name"] == domain_name:
                 return domain
+            
         return None
 
     def get_entity_types(self, domain_name):
