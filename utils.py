@@ -8,3 +8,10 @@ def validate_number(value):
 
     except ValueError:
         return False
+
+
+def convert_property_value(value, property_type):
+    if property_type == "number" and value != "":
+        return float(value)
+
+    return value

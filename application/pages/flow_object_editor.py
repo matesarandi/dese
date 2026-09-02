@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from dese.constants import INPUT_WIDTH, PAD_FRAME_IN, PAD_WIDGET
-from dese.utils import validate_number
+from dese.utils import convert_property_value, validate_number
 
 
 class FlowObjectEditor:
@@ -87,9 +87,7 @@ class FlowObjectEditor:
     def update_flow_object_property(
         self, flow_object, property_name, value, property_type
     ):
-        if property_type == "number" and value != "":
-            value = float(value)
-
+        value = convert_property_value(value, property_type)
         flow_object[property_name] = value
 
         if property_name == "name":
@@ -104,6 +102,13 @@ class FlowObjectEditor:
             self.flow_object_listbox.selection_set(flow_object_index)
 
         self.model_changed_callback(True)
+
+    def commit_property_value(self, container, property_name, property_type, variable):
+        self.update_flow_object_property(
+            container, property_name, variable.get(), property_type
+        )
+
+        variable.set(str(container[property_name]))
 
     def get_processing_entities(self):
         return [
@@ -128,6 +133,11 @@ class FlowObjectEditor:
 
         row = 0
 
+        # Grid:
+        self.right_frame.columnconfigure(0, weight=1)
+        self.right_frame.columnconfigure(1, weight=0)
+        self.right_frame.columnconfigure(2, weight=0)
+
         # Required Properties
         # ==========================
 
@@ -146,7 +156,7 @@ class FlowObjectEditor:
                 self.right_frame, width=INPUT_WIDTH, textvariable=variable
             )
 
-            entry.grid(row=row, column=1, sticky="ew", padx=PAD_WIDGET, pady=PAD_WIDGET)
+            entry.grid(row=row, column=1, sticky="w", padx=PAD_WIDGET, pady=PAD_WIDGET)
 
             # Event binding:
             if property_name == "name":
@@ -178,7 +188,22 @@ class FlowObjectEditor:
                     ),
                 )
 
-            row += 1
+        row += 1
+
+        # Separator widget bw. sections:
+        section_separator = ttk.Separator(self.right_frame, orient="horizontal")
+
+        # Display separator widget bw. sections:
+        section_separator.grid(
+            row=row,
+            column=0,
+            columnspan=3,
+            sticky="ew",
+            padx=PAD_WIDGET,
+            pady=PAD_WIDGET,
+        )
+
+        row += 1
 
         # Properties
         # ==========================
@@ -218,9 +243,20 @@ class FlowObjectEditor:
                             entry.set(entity["name"])
                             break
 
-            ttk.Label(
+            # Widgets:
+            label = ttk.Label(
                 self.right_frame, text=property_name.replace("_", " ").title()
-            ).grid(row=row, column=0, sticky="w", padx=PAD_WIDGET, pady=PAD_WIDGET)
+            )
+
+            description_label = ttk.Label(
+                self.right_frame, text=property_description["description"]
+            )
+
+            unit_label = ttk.Label(
+                self.right_frame, text=property_description.get("unit", "")
+            )
+
+            separator = ttk.Separator(self.right_frame, orient="horizontal")
 
             if property_name != "entry_entity":
                 variable = tk.StringVar(
@@ -229,7 +265,7 @@ class FlowObjectEditor:
 
                 if property_description["type"] == "number":
                     validate_command = (
-                        self.window.register(self.validate_number),
+                        self.window.register(validate_number),
                         "%P",
                     )
 
@@ -247,22 +283,62 @@ class FlowObjectEditor:
                     )
 
                 # Event binding:
-                variable.trace_add(
-                    "write",
-                    lambda *args, property_name=property_name, property_type=property_description["type"], variable=variable: (
-                        self.update_flow_object_property(
+                entry.bind(
+                    "<FocusOut>",
+                    lambda event, flow_object=flow_object, property_name=property_name, property_type=property_description["type"], variable=variable: (
+                        self.commit_property_value(
                             flow_object["properties"],
                             property_name,
-                            variable.get(),
                             property_type,
                             variable,
                         )
                     ),
                 )
 
-            entry.grid(row=row, column=1, sticky="ew", padx=PAD_WIDGET, pady=PAD_WIDGET)
+                entry.bind(
+                    "<Return>",
+                    lambda event, flow_object=flow_object, property_name=property_name, property_type=property_description["type"], variable=variable: (
+                        self.commit_property_value(
+                            flow_object["properties"],
+                            property_name,
+                            property_type,
+                            variable,
+                        )
+                    ),
+                )
 
-            row += 1
+            # Display widgets:
+            description_label.grid(
+                row=row,
+                column=0,
+                columnspan=2,
+                padx=PAD_WIDGET,
+                pady=PAD_WIDGET,
+                sticky="w",
+            )
+
+            label.grid(
+                row=row + 1, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+            )
+
+            entry.grid(
+                row=row + 1, column=1, padx=(PAD_WIDGET, 0), pady=PAD_WIDGET, sticky="w"
+            )
+
+            unit_label.grid(
+                row=row + 1, column=2, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+            )
+
+            separator.grid(
+                row=row + 2,
+                column=0,
+                columnspan=3,
+                sticky="ew",
+                padx=PAD_WIDGET,
+                pady=PAD_WIDGET,
+            )
+
+            row += 3
 
     def load_flow_objects(self):
         self.flow_object_listbox.delete(0, tk.END)

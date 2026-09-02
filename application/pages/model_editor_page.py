@@ -10,7 +10,7 @@ from dese.constants import (
     PAD_WIDGET,
     SPINBOX_WIDTH,
 )
-from dese.utils import validate_number
+from dese.utils import convert_property_value, validate_number
 
 
 class ModelEditorPage(ttk.Frame):
@@ -49,6 +49,12 @@ class ModelEditorPage(ttk.Frame):
             number += 1
 
         return f"E{number:03d}"
+
+    def is_entity_name_unique(self, entity, name):
+        return all(
+            other_entity is entity or other_entity["name"] != name
+            for other_entity in self.model_data["entities"]
+        )
 
     def generate_relationship_id(self):
         existing_ids = [
@@ -129,6 +135,10 @@ class ModelEditorPage(ttk.Frame):
 
         if not entity_type:
             messagebox.showwarning("Invalid Entity", "Type is required.")
+            return
+
+        if any(entity["name"] == name for entity in self.model_data["entities"]):
+            messagebox.showwarning("Duplicate name", "Cannot use the same name.")
             return
 
         # Get entity schema:
@@ -253,12 +263,19 @@ class ModelEditorPage(ttk.Frame):
 
         properties = entity_schema["properties"]
 
+        # Grid:
+        self.property_content.columnconfigure(0, weight=1)
+        self.property_content.columnconfigure(1, weight=0)
+        self.property_content.columnconfigure(2, weight=0)
+
         for property_name, description in properties.items():
             # Widgets:
-            label = ttk.Label(self.property_content, text=f"{property_name}:")
+            label = ttk.Label(
+                self.property_content, text=property_name.replace("_", " ").title()
+            )
 
             if description["type"] == "number":
-                validate_command = (self.register(self.validate_number), "%P")
+                validate_command = (self.register(validate_number), "%P")
 
                 entry = ttk.Entry(
                     self.property_content,
@@ -270,7 +287,12 @@ class ModelEditorPage(ttk.Frame):
             else:
                 entry = ttk.Entry(self.property_content, width=INPUT_WIDTH)
 
-            description_label = ttk.Label(self.property_content, text=description)
+            description_label = ttk.Label(
+                self.property_content, text=description["description"]
+            )
+            unit_label = ttk.Label(
+                self.property_content, text=description.get("unit", "")
+            )
             separator = ttk.Separator(self.property_content, orient="horizontal")
             property_value = self.selected_entity.get("properties", {}).get(
                 property_name
@@ -291,9 +313,12 @@ class ModelEditorPage(ttk.Frame):
             entry.grid(
                 row=row + 1,
                 column=1,
-                padx=PAD_WIDGET,
+                padx=(PAD_WIDGET, 0),
                 pady=PAD_WIDGET,
-                sticky="w",
+                sticky="e",
+            )
+            unit_label.grid(
+                row=row + 1, column=2, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
             )
             description_label.grid(
                 row=row,
@@ -306,7 +331,7 @@ class ModelEditorPage(ttk.Frame):
             separator.grid(
                 row=row + 2,
                 column=0,
-                columnspan=2,
+                columnspan=3,
                 sticky="ew",
                 padx=PAD_WIDGET,
                 pady=PAD_WIDGET,
@@ -314,9 +339,16 @@ class ModelEditorPage(ttk.Frame):
 
             # Event binding:
             entry.bind(
-                "<KeyRelease>",
-                lambda event, property_name=property_name: self.update_entity_property(
-                    property_name, event
+                "<FocusOut>",
+                lambda event, property_name=property_name, entry=entry: (
+                    self.commit_entity_property(property_name, entry)
+                ),
+            )
+
+            entry.bind(
+                "<Return>",
+                lambda event, property_name=property_name, entry=entry: (
+                    self.commit_entity_property(property_name, entry)
                 ),
             )
 
@@ -786,6 +818,12 @@ class ModelEditorPage(ttk.Frame):
         if self.selected_entity["name"] == new_name:
             return
 
+        if not self.is_entity_name_unique(self.selected_entity, new_name):
+            messagebox.showwarning("Duplicate name", "Cannot use the same name.")
+            self.name_entry.delete(0, "end")
+            self.name_entry.insert(0, self.selected_entity["name"])
+            return
+
         self.selected_entity["name"] = new_name
 
         selected_item = self.entity_table.selection()
@@ -815,6 +853,12 @@ class ModelEditorPage(ttk.Frame):
         self.update_relationship_editor()
         self.model_changed_callback(True)
 
+    def commit_entity_property(self, property_name, entry):
+        self.update_entity_property(property_name)
+
+        entry.delete(0, "end")
+        entry.insert(0, str(self.selected_entity["properties"].get(property_name, "")))
+
     def update_entity_property(self, property_name, event=None):
         if self.selected_entity is None:
             return
@@ -825,8 +869,7 @@ class ModelEditorPage(ttk.Frame):
             self.model_data["domain"], self.selected_entity["type"]
         )["properties"][property_name]
 
-        if property_schema["type"] == "number" and new_value != "":
-            new_value = float(new_value)
+        new_value = convert_property_value(new_value, property_schema["type"])
 
         if self.selected_entity["properties"].get(property_name) == new_value:
             return
@@ -1155,7 +1198,8 @@ class ModelEditorPage(ttk.Frame):
         )
 
         # Event binding:
-        self.name_entry.bind("<KeyRelease>", self.update_entity_name)
+        self.name_entry.bind("<FocusOut>", self.update_entity_name)
+        self.name_entry.bind("<Return>", self.update_entity_name)
         self.type_combobox.bind("<<ComboboxSelected>>", self.update_entity_type)
 
         # Display frame widget:
