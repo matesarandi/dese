@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 from dese.constants import INPUT_WIDTH, PAD_FRAME_IN, PAD_WIDGET
 
@@ -28,6 +28,16 @@ class FlowObjectEditor:
             other_flow_object is flow_object or other_flow_object["name"] != name
             for other_flow_object in self.model_data["flow_objects"]
         )
+
+    def validate_flow_object_name(self, flow_object, name, variable):
+        if not self.is_flow_object_name_unique(flow_object, name):
+            messagebox.showwarning("Duplicate name", "Cannot use the same name.")
+
+            variable.set(flow_object["name"])
+            return False
+
+        self.update_flow_object_property(flow_object, "name", name, "string")
+        return True
 
     def add_flow_object(self):
         flow_object_schema = self.schema.get_flow_object_schema()
@@ -74,15 +84,8 @@ class FlowObjectEditor:
         self.display_flow_object_properties(flow_object)
 
     def update_flow_object_property(
-        self, flow_object, property_name, value, property_type, variable=None
+        self, flow_object, property_name, value, property_type
     ):
-        if property_name == "name":
-            if not self.is_flow_object_name_unique(flow_object, value):
-                if variable is not None:
-                    variable.set(flow_object["name"])
-
-                return
-
         if property_type == "number" and value != "":
             value = float(value)
 
@@ -156,18 +159,34 @@ class FlowObjectEditor:
             entry.grid(row=row, column=1, sticky="ew", padx=PAD_WIDGET, pady=PAD_WIDGET)
 
             # Event binding:
-            variable.trace_add(
-                "write",
-                lambda *args, property_name=property_name, property_type=property_schema["type"], variable=variable: (
-                    self.update_flow_object_property(
-                        flow_object,
-                        property_name,
-                        variable.get(),
-                        property_type,
-                        variable,
-                    )
-                ),
-            )
+            if property_name == "name":
+                entry.bind(
+                    "<FocusOut>",
+                    lambda event, flow_object=flow_object, variable=variable: (
+                        self.validate_flow_object_name(
+                            flow_object, variable.get(), variable
+                        )
+                    ),
+                )
+
+                entry.bind(
+                    "<Return>",
+                    lambda event, flow_object=flow_object, variable=variable: (
+                        self.validate_flow_object_name(
+                            flow_object, variable.get(), variable
+                        )
+                    ),
+                )
+
+            else:
+                variable.trace_add(
+                    "write",
+                    lambda *args, property_name=property_name, property_type=property_schema["type"], variable=variable: (
+                        self.update_flow_object_property(
+                            flow_object, property_name, variable.get(), property_type
+                        )
+                    ),
+                )
 
             row += 1
 

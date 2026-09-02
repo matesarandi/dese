@@ -31,20 +31,23 @@
     },
     "initial_readiness": {
       "type": "number",
+      "unit": "%",
       "description": "Initial readiness of the Flow Object when it enters the process."
-    },
-    "process_requirements": {
-      "type": "object",
-      "description": "Defines the required Process Supply quantities for each Processing Entity.",
-      "structure": {
-        "processing_entity_id": {
-          "type": "object",
-          "description": "Processing Entity and its required Process Supply quantities.",
-          "structure": {
-            "process_supply_entity_id": {
-              "type": "number",
-              "description": "Required quantity of the Process Supply."
-            }
+    }
+  },
+
+  "process_requirements": {
+    "type": "object",
+    "description": "Defines the required Process Supply quantities for each Processing Entity.",
+    "structure": {
+      "processing_entity_id": {
+        "type": "object",
+        "description": "Processing Entity and its required Process Supply quantities.",
+        "structure": {
+          "process_supply_entity_id": {
+            "type": "number",
+            "unit": "piece",
+            "description": "Required quantity of the Process Supply."
           }
         }
       }
@@ -105,8 +108,16 @@
             "position": "center"
           },
           "properties": {
-            "generation_interval": "Time interval between generated Flow Objects.",
-            "batch_size": "Number of Flow Objects generated at each generation event."
+            "generation_interval": {
+              "type": "number",
+              "unit": "s",
+              "description": "Time interval between generated Flow Objects."
+            },
+            "batch_size": {
+              "type": "number",
+              "unit": "piece",
+              "description": "Number of Flow Objects generated at each generation event."
+            }
           }
         },
 
@@ -121,8 +132,16 @@
             "position": "center"
           },
           "properties": {
-            "processing_time": "Time required to process one Flow Object.",
-            "capacity": "Maximum number of Flow Objects processed at once."
+            "processing_time": {
+              "type": "number",
+              "unit": "s",
+              "description": "Time required to process one Flow Object."
+            },
+            "capacity": {
+              "type": "number",
+              "unit": "piece",
+              "description": "Maximum number of Flow Objects processed at once."
+            }
           }
         },
 
@@ -137,8 +156,16 @@
             "position": "center"
           },
           "properties": {
-            "inspection_time": "Time required to inspect one Flow Object.",
-            "capacity": "Maximum number of Flow Objects inspected at once."
+            "inspection_time": {
+              "type": "number",
+              "unit": "s",
+              "description": "Time required to inspect one Flow Object."
+            },
+            "capacity": {
+              "type": "number",
+              "unit": "piece",
+              "description": "Maximum number of Flow Objects inspected at once."
+            }
           }
         },
 
@@ -153,9 +180,20 @@
             "position": "center"
           },
           "properties": {
-            "capacity": "Maximum number of Flow Objects that can be stored.",
-            "initial_inventory": "Initial quantity of Flow Objects in the Storage.",
-            "queue_rule": "Rule determining the order in which Flow Objects leave the Storage."
+            "capacity": {
+              "type": "number",
+              "unit": "piece",
+              "description": "Maximum number of Flow Objects that can be stored."
+            },
+            "initial_inventory": {
+              "type": "number",
+              "unit": "piece",
+              "description": "Initial quantity of Flow Objects in the Storage."
+            },
+            "queue_rule": {
+              "type": "string",
+              "description": "Rule determining the order in which Flow Objects leave the Storage."
+            }
           }
         },
 
@@ -170,8 +208,16 @@
             "position": "center"
           },
           "properties": {
-            "transport_time": "Time required to transport one Flow Object.",
-            "capacity": "Maximum number of Flow Objects that can be transported at once."
+            "transport_time": {
+              "type": "number",
+              "unit": "s",
+              "description": "Time required to transport one Flow Object."
+            },
+            "capacity": {
+              "type": "number",
+              "unit": "piece",
+              "description": "Maximum number of Flow Objects that can be transported at once."
+            }
           }
         },
 
@@ -186,10 +232,26 @@
             "position": "above"
           },
           "properties": {
-            "capacity": "Maximum quantity of supplied material available.",
-            "initial_quantity": "Initial quantity of supplied material.",
-            "replenishment_interval": "Time interval between replenishment events.",
-            "replenishment_quantity": "Quantity added at each replenishment event."
+            "capacity": {
+              "type": "number",
+              "unit": "piece",
+              "description": "Maximum quantity of supplied material available."
+            },
+            "initial_quantity": {
+              "type": "number",
+              "unit": "piece",
+              "description": "Initial quantity of supplied material."
+            },
+            "replenishment_interval": {
+              "type": "number",
+              "unit": "s",
+              "description": "Time interval between replenishment events."
+            },
+            "replenishment_quantity": {
+              "type": "number",
+              "unit": "piece",
+              "description": "Quantity added at each replenishment event."
+            }
           }
         },
 
