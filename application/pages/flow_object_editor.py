@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from dese.constants import INPUT_WIDTH, PAD_FRAME_IN, PAD_WIDGET
+from dese.utils import validate_number
 
 
 class FlowObjectEditor:
@@ -103,17 +104,6 @@ class FlowObjectEditor:
             self.flow_object_listbox.selection_set(flow_object_index)
 
         self.model_changed_callback(True)
-
-    def validate_number(self, value):
-        if value == "":
-            return True
-
-        try:
-            float(value)
-            return True
-
-        except ValueError:
-            return False
 
     def get_processing_entities(self):
         return [

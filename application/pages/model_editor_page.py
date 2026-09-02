@@ -10,6 +10,7 @@ from dese.constants import (
     PAD_WIDGET,
     SPINBOX_WIDTH,
 )
+from dese.utils import validate_number
 
 
 class ModelEditorPage(ttk.Frame):
@@ -255,7 +256,20 @@ class ModelEditorPage(ttk.Frame):
         for property_name, description in properties.items():
             # Widgets:
             label = ttk.Label(self.property_content, text=f"{property_name}:")
-            entry = ttk.Entry(self.property_content, width=INPUT_WIDTH)
+
+            if description["type"] == "number":
+                validate_command = (self.register(self.validate_number), "%P")
+
+                entry = ttk.Entry(
+                    self.property_content,
+                    width=INPUT_WIDTH,
+                    validate="key",
+                    validatecommand=validate_command,
+                )
+
+            else:
+                entry = ttk.Entry(self.property_content, width=INPUT_WIDTH)
+
             description_label = ttk.Label(self.property_content, text=description)
             separator = ttk.Separator(self.property_content, orient="horizontal")
             property_value = self.selected_entity.get("properties", {}).get(
@@ -806,6 +820,13 @@ class ModelEditorPage(ttk.Frame):
             return
 
         new_value = self.property_entries[property_name].get()
+
+        property_schema = self.schema.get_entity_schema(
+            self.model_data["domain"], self.selected_entity["type"]
+        )["properties"][property_name]
+
+        if property_schema["type"] == "number" and new_value != "":
+            new_value = float(new_value)
 
         if self.selected_entity["properties"].get(property_name) == new_value:
             return
