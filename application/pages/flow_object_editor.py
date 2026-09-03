@@ -65,6 +65,9 @@ class FlowObjectEditor:
         for property_name in flow_object_schema["properties"]:
             flow_object["properties"][property_name] = None
 
+        # Process requirements:
+        flow_object["process_requirements"] = {}
+
         self.model_data["flow_objects"].append(flow_object)
 
         self.model_changed_callback(True)
@@ -110,6 +113,19 @@ class FlowObjectEditor:
 
         variable.set(str(container[property_name]))
 
+    def commit_process_requirement(
+        self, flow_object, processing_entity_id, process_supply_entity_id, variable
+    ):
+        new_value = convert_property_value(variable.get(), "number")
+
+        flow_object["process_requirements"].setdefault(processing_entity_id, {})[
+            process_supply_entity_id
+        ] = new_value
+
+        variable.set(str(new_value))
+
+        self.model_changed_callback(True)
+
     def get_processing_entities(self):
         return [
             entity
@@ -141,22 +157,21 @@ class FlowObjectEditor:
         # Required Properties
         # ==========================
 
-        # Child widgets + display child widgets:
-
         for property_name, property_schema in flow_object_schema[
             "required_properties"
         ].items():
-            ttk.Label(
+            # Widgets:
+            label = ttk.Label(
                 self.right_frame, text=property_name.replace("_", " ").title()
-            ).grid(row=row, column=0, sticky="w", padx=PAD_WIDGET, pady=PAD_WIDGET)
-
+            )
             variable = tk.StringVar(value=str(flow_object[property_name] or ""))
-
             entry = ttk.Entry(
                 self.right_frame, width=INPUT_WIDTH, textvariable=variable
             )
 
+            # Display widgets:
             entry.grid(row=row, column=1, sticky="w", padx=PAD_WIDGET, pady=PAD_WIDGET)
+            label.grid(row=row, column=0, sticky="w", padx=PAD_WIDGET, pady=PAD_WIDGET)
 
             # Event binding:
             if property_name == "name":
@@ -208,7 +223,7 @@ class FlowObjectEditor:
         # Properties
         # ==========================
 
-        # Child widgets + display child widgets:
+        # Widgets:
 
         for property_name, property_description in flow_object_schema[
             "properties"
@@ -340,6 +355,183 @@ class FlowObjectEditor:
 
             row += 3
 
+        # Process Requirements
+        # ==========================
+
+        # Frame widget:
+        process_requirements_frame = ttk.LabelFrame(
+            self.right_frame,
+            text="Process Requirements",
+            style="DESE.Section.TLabelframe",
+            padding=PAD_FRAME_IN,
+        )
+
+        # Display frame widget:
+        process_requirements_frame.grid(
+            row=row,
+            column=0,
+            columnspan=3,
+            sticky="ew",
+            padx=PAD_WIDGET,
+            pady=PAD_WIDGET,
+        )
+
+        # Grid:
+        process_requirements_frame.columnconfigure(0, weight=1)
+        process_requirements_frame.columnconfigure(1, weight=0)
+        process_requirements_frame.columnconfigure(2, weight=1)
+
+        # Processing entities:
+        processing_entities = self.get_processing_entities()
+
+        if not processing_entities:
+            # No processing entities message:
+            no_processing_entities_label = ttk.Label(
+                process_requirements_frame, text="No Processing Entities defined."
+            )
+
+            # Display no processing entities message:
+            no_processing_entities_label.grid(
+                row=row + 1,
+                column=0,
+                columnspan=3,
+                sticky="w",
+                padx=PAD_WIDGET,
+                pady=PAD_WIDGET,
+            )
+
+            row += 1
+
+        else:
+            for processing_entity in processing_entities:
+                # Widgets:
+                processing_entity_label = ttk.Label(
+                    process_requirements_frame,
+                    text=f'Consumption at "{processing_entity["name"]}" (units):',
+                )
+
+                # Display widgets:
+                processing_entity_label.grid(
+                    row=row + 1,
+                    column=0,
+                    columnspan=3,
+                    sticky="w",
+                    padx=PAD_WIDGET,
+                    pady=PAD_WIDGET,
+                )
+
+                row += 1
+
+                # Process supply relationships:
+                process_supply_relationships = []
+
+                for relationship in self.model_data["relationships"]:
+                    if relationship["target"] != processing_entity["id"]:
+                        continue
+
+                    process_supply_entity = next(
+                        entity
+                        for entity in self.model_data["entities"]
+                        if entity["id"] == relationship["source"]
+                    )
+
+                    if process_supply_entity["type"] == "Process Supply":
+                        process_supply_relationships.append(relationship)
+
+                if not process_supply_relationships:
+                    # No process supplies message:
+                    no_process_supplies_label = ttk.Label(
+                        process_requirements_frame, text="No Process Supplies defined."
+                    )
+
+                    # Display no process supplies message:
+                    no_process_supplies_label.grid(
+                        row=row + 1,
+                        column=0,
+                        columnspan=3,
+                        sticky="w",
+                        padx=PAD_WIDGET,
+                        pady=PAD_WIDGET,
+                    )
+
+                    row += 1
+
+                else:
+                    # Process supplies:
+                    for relationship in process_supply_relationships:
+                        process_supply_entity = next(
+                            entity
+                            for entity in self.model_data["entities"]
+                            if entity["id"] == relationship["source"]
+                        )
+
+                        # Widgets:
+                        process_supply_label = ttk.Label(
+                            process_requirements_frame,
+                            text=process_supply_entity["name"],
+                        )
+                        quantity_variable = tk.StringVar(
+                            value=str(
+                                flow_object["process_requirements"]
+                                .get(processing_entity["id"], {})
+                                .get(process_supply_entity["id"], "")
+                            )
+                        )
+                        quantity_validate_command = (
+                            self.window.register(validate_number),
+                            "%P",
+                        )
+                        quantity_entry = ttk.Entry(
+                            process_requirements_frame,
+                            width=INPUT_WIDTH,
+                            textvariable=quantity_variable,
+                            validate="key",
+                            validatecommand=quantity_validate_command,
+                        )
+
+                        # Event binding:
+                        quantity_entry.bind(
+                            "<FocusOut>",
+                            lambda event, flow_object=flow_object, processing_entity_id=processing_entity["id"], process_supply_entity_id=process_supply_entity["id"], variable=quantity_variable: (
+                                self.commit_process_requirement(
+                                    flow_object,
+                                    processing_entity_id,
+                                    process_supply_entity_id,
+                                    variable,
+                                )
+                            ),
+                        )
+
+                        quantity_entry.bind(
+                            "<Return>",
+                            lambda event, flow_object=flow_object, processing_entity_id=processing_entity["id"], process_supply_entity_id=process_supply_entity["id"], variable=quantity_variable: (
+                                self.commit_process_requirement(
+                                    flow_object,
+                                    processing_entity_id,
+                                    process_supply_entity_id,
+                                    variable,
+                                )
+                            ),
+                        )
+
+                        # Display widgets:
+                        process_supply_label.grid(
+                            row=row + 1,
+                            column=0,
+                            sticky="w",
+                            padx=PAD_WIDGET,
+                            pady=PAD_WIDGET,
+                        )
+                        quantity_entry.grid(
+                            row=row + 1,
+                            column=1,
+                            sticky="w",
+                            padx=PAD_WIDGET,
+                            pady=PAD_WIDGET,
+                        )
+
+                        row += 1
+
     def load_flow_objects(self):
         self.flow_object_listbox.delete(0, tk.END)
 
@@ -354,6 +546,10 @@ class FlowObjectEditor:
 
         del self.model_data["flow_objects"][selected_index[0]]
         self.flow_object_listbox.delete(selected_index[0])
+
+        # Clear editor:
+        for widget in self.right_frame.winfo_children():
+            widget.destroy()
 
         self.model_changed_callback(True)
 
