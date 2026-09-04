@@ -1100,6 +1100,30 @@ class ModelEditorPage(ttk.Frame):
         self.relationship_editor.rowconfigure(0, weight=1)
         self.relationship_editor.columnconfigure(0, weight=1)
 
+        # Grid (basic editor):
+        self.basic_editor.columnconfigure(0, weight=1, uniform="basic")
+        self.basic_editor.columnconfigure(1, weight=1, uniform="basic")
+
+        # Basic editor widgets:
+        self.name_editor = ttk.LabelFrame(
+            self.basic_editor,
+            text="Name",
+            style="DESE.Section.TLabelframe",
+            padding=PAD_FRAME_IN,
+        )
+        self.type_editor = ttk.LabelFrame(
+            self.basic_editor,
+            text="Type",
+            style="DESE.Section.TLabelframe",
+            padding=PAD_FRAME_IN,
+        )
+
+        # Grid (name editor):
+        self.name_editor.columnconfigure(0, weight=1)
+
+        # Grid (type editor):
+        self.type_editor.columnconfigure(0, weight=1)
+
         # Property editor widgets:
         self.property_canvas = tk.Canvas(self.property_editor)
         self.property_scrollbar = ttk.Scrollbar(
@@ -1126,6 +1150,10 @@ class ModelEditorPage(ttk.Frame):
                 self.property_window, width=event.width
             ),
         )
+
+        # Display basic editor widgets:
+        self.name_editor.grid(row=0, column=0, sticky="nsew", padx=(0, PAD_WIDGET // 2))
+        self.type_editor.grid(row=0, column=1, sticky="nsew", padx=(PAD_WIDGET // 2, 0))
 
         # Display property editor widgets:
         self.property_canvas.grid(row=0, column=0, sticky="nsew")
@@ -1168,7 +1196,7 @@ class ModelEditorPage(ttk.Frame):
 
         # Display section frames:
         self.basic_editor.grid(
-            row=0, column=0, columnspan=2, sticky="ew", padx=PAD_WIDGET, pady=PAD_WIDGET
+            row=0, column=0, sticky="ew", padx=PAD_WIDGET, pady=PAD_WIDGET
         )
         self.property_editor.grid(
             row=1, column=0, sticky="nsew", padx=PAD_WIDGET, pady=PAD_WIDGET
@@ -1180,13 +1208,13 @@ class ModelEditorPage(ttk.Frame):
             row=2, column=0, columnspan=2, sticky="ew", padx=PAD_WIDGET, pady=PAD_WIDGET
         )
 
-        # Child widgets:
-        self.name_label = ttk.Label(self.basic_editor, text="Name:")
-        self.name_entry = ttk.Entry(self.basic_editor, width=INPUT_WIDTH)
-        self.type_title_label = ttk.Label(self.basic_editor, text="Type:")
+        # Name and type editor widgets:
+        self.name_entry = ttk.Entry(self.name_editor, width=INPUT_WIDTH)
         self.type_combobox = ttk.Combobox(
-            self.basic_editor, state="readonly", width=INPUT_WIDTH
+            self.type_editor, state="readonly", width=INPUT_WIDTH
         )
+
+        # Button frame widgets:
         self.save_model_button = ttk.Button(
             self.button_frame, text="Save", width=BUTTON_WIDTH, command=self.save_model
         )
@@ -1207,19 +1235,15 @@ class ModelEditorPage(ttk.Frame):
             row=1, column=0, sticky="nsew", padx=PAD_WIDGET, pady=PAD_WIDGET
         )
 
-        # Display child widgets:
-        self.name_label.grid(
-            row=0, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-        )
+        # Display name and type editor widgets:
         self.name_entry.grid(
-            row=0, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-        )
-        self.type_title_label.grid(
-            row=0, column=2, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+            row=0, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="ew"
         )
         self.type_combobox.grid(
-            row=0, column=3, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
+            row=0, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="ew"
         )
+
+        # Display button frame widgets:
         self.save_model_button.grid(
             row=0, column=1, sticky="e", padx=PAD_WIDGET, pady=PAD_WIDGET
         )
@@ -1293,15 +1317,27 @@ class ModelEditorPage(ttk.Frame):
 
     def create_widgets(self):
         # Grid:
-        self.rowconfigure(0, weight=0)
-        self.rowconfigure(1, weight=1)
+        self.rowconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
+
+        # Main Frame
+        # ==========================
+
+        # Frame widget:
+        self.main_frame = ttk.Frame(self, padding=PAD_FRAME_IN)
+
+        # Grid:
+        self.main_frame.rowconfigure(0, weight=1)
+        self.main_frame.columnconfigure(0, weight=1)
+
+        # Display frame widget:
+        self.main_frame.grid(row=0, column=0, sticky="nsew")
 
         # Notebook
         # ==========================
 
         # Widget:
-        self.notebook = ttk.Notebook(self)
+        self.notebook = ttk.Notebook(self.main_frame, padding=0)
 
         # Tabs
         # ==========================
@@ -1317,7 +1353,7 @@ class ModelEditorPage(ttk.Frame):
         self.notebook.add(self.rules_tab, text="Rules")
 
         # Display widgets:
-        self.notebook.grid(row=1, column=0, sticky="nsew")
+        self.notebook.grid(row=0, column=0, sticky="nsew")
 
         # Create tab content:
         self.create_structure_tab()

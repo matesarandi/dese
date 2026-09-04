@@ -142,17 +142,30 @@ class FlowObjectEditor:
                 return entity["id"]
 
     def display_flow_object_properties(self, flow_object):
-        for widget in self.right_frame.winfo_children():
+        for widget in self.right_content_frame.winfo_children():
             widget.destroy()
 
         flow_object_schema = self.schema.get_flow_object_schema()
 
         row = 0
 
+        # Flow object properties frame widget::
+        flow_object_properties_frame = ttk.LabelFrame(
+            self.right_content_frame,
+            text="Flow Object Properties",
+            style="DESE.Section.TLabelframe",
+            padding=PAD_FRAME_IN,
+        )
+
         # Grid:
-        self.right_frame.columnconfigure(0, weight=1)
-        self.right_frame.columnconfigure(1, weight=0)
-        self.right_frame.columnconfigure(2, weight=0)
+        flow_object_properties_frame.columnconfigure(0, weight=1)
+        flow_object_properties_frame.columnconfigure(1, weight=0)
+        flow_object_properties_frame.columnconfigure(2, weight=0)
+
+        # Display flow object properties frame widget:
+        flow_object_properties_frame.grid(
+            row=0, column=0, columnspan=3, sticky="ew", padx=PAD_WIDGET, pady=PAD_WIDGET
+        )
 
         # Required Properties
         # ==========================
@@ -162,11 +175,12 @@ class FlowObjectEditor:
         ].items():
             # Widgets:
             label = ttk.Label(
-                self.right_frame, text=property_name.replace("_", " ").title()
+                flow_object_properties_frame,
+                text=property_name.replace("_", " ").title(),
             )
             variable = tk.StringVar(value=str(flow_object[property_name] or ""))
             entry = ttk.Entry(
-                self.right_frame, width=INPUT_WIDTH, textvariable=variable
+                flow_object_properties_frame, width=INPUT_WIDTH, textvariable=variable
             )
 
             # Display widgets:
@@ -206,7 +220,9 @@ class FlowObjectEditor:
         row += 1
 
         # Separator widget bw. sections:
-        section_separator = ttk.Separator(self.right_frame, orient="horizontal")
+        section_separator = ttk.Separator(
+            flow_object_properties_frame, orient="horizontal"
+        )
 
         # Display separator widget bw. sections:
         section_separator.grid(
@@ -225,12 +241,30 @@ class FlowObjectEditor:
 
         # Widgets:
 
-        for property_name, property_description in flow_object_schema[
-            "properties"
-        ].items():
+        for property_index, (property_name, property_description) in enumerate(
+            flow_object_schema["properties"].items()
+        ):
+            if property_index > 0:
+                # Widgets:
+                separator = ttk.Separator(
+                    flow_object_properties_frame, orient="horizontal"
+                )
+
+                # Display widgets:
+                separator.grid(
+                    row=row,
+                    column=0,
+                    columnspan=3,
+                    sticky="ew",
+                    padx=PAD_WIDGET,
+                    pady=PAD_WIDGET,
+                )
+
+                row += 1
+
             if property_name == "entry_entity":
                 entry = ttk.Combobox(
-                    self.right_frame,
+                    flow_object_properties_frame,
                     values=self.get_processing_entity_names(),
                     state="readonly",
                     width=INPUT_WIDTH,
@@ -260,18 +294,17 @@ class FlowObjectEditor:
 
             # Widgets:
             label = ttk.Label(
-                self.right_frame, text=property_name.replace("_", " ").title()
+                flow_object_properties_frame,
+                text=property_name.replace("_", " ").title(),
             )
 
             description_label = ttk.Label(
-                self.right_frame, text=property_description["description"]
+                flow_object_properties_frame, text=property_description["description"]
             )
 
             unit_label = ttk.Label(
-                self.right_frame, text=property_description.get("unit", "")
+                flow_object_properties_frame, text=property_description.get("unit", "")
             )
-
-            separator = ttk.Separator(self.right_frame, orient="horizontal")
 
             if property_name != "entry_entity":
                 variable = tk.StringVar(
@@ -285,7 +318,7 @@ class FlowObjectEditor:
                     )
 
                     entry = ttk.Entry(
-                        self.right_frame,
+                        flow_object_properties_frame,
                         width=INPUT_WIDTH,
                         textvariable=variable,
                         validate="key",
@@ -294,7 +327,9 @@ class FlowObjectEditor:
 
                 else:
                     entry = ttk.Entry(
-                        self.right_frame, width=INPUT_WIDTH, textvariable=variable
+                        flow_object_properties_frame,
+                        width=INPUT_WIDTH,
+                        textvariable=variable,
                     )
 
                 # Event binding:
@@ -331,26 +366,14 @@ class FlowObjectEditor:
                 pady=PAD_WIDGET,
                 sticky="w",
             )
-
             label.grid(
                 row=row + 1, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
             )
-
             entry.grid(
                 row=row + 1, column=1, padx=(PAD_WIDGET, 0), pady=PAD_WIDGET, sticky="w"
             )
-
             unit_label.grid(
                 row=row + 1, column=2, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-            )
-
-            separator.grid(
-                row=row + 2,
-                column=0,
-                columnspan=3,
-                sticky="ew",
-                padx=PAD_WIDGET,
-                pady=PAD_WIDGET,
             )
 
             row += 3
@@ -360,7 +383,7 @@ class FlowObjectEditor:
 
         # Frame widget:
         process_requirements_frame = ttk.LabelFrame(
-            self.right_frame,
+            self.right_content_frame,
             text="Process Requirements",
             style="DESE.Section.TLabelframe",
             padding=PAD_FRAME_IN,
@@ -379,9 +402,10 @@ class FlowObjectEditor:
         # Grid:
         process_requirements_frame.columnconfigure(0, weight=1)
         process_requirements_frame.columnconfigure(1, weight=0)
-        process_requirements_frame.columnconfigure(2, weight=1)
+        process_requirements_frame.columnconfigure(2, weight=0)
 
         # Processing entities:
+        process_requirements_row = 0
         processing_entities = self.get_processing_entities()
 
         if not processing_entities:
@@ -392,7 +416,7 @@ class FlowObjectEditor:
 
             # Display no processing entities message:
             no_processing_entities_label.grid(
-                row=row + 1,
+                row=process_requirements_row,
                 column=0,
                 columnspan=3,
                 sticky="w",
@@ -400,19 +424,39 @@ class FlowObjectEditor:
                 pady=PAD_WIDGET,
             )
 
-            row += 1
+            process_requirements_row += 1
 
         else:
-            for processing_entity in processing_entities:
+            for processing_entity_index, processing_entity in enumerate(
+                processing_entities
+            ):
+                if processing_entity_index > 0:
+                    # Widgets:
+                    processing_entity_separator = ttk.Separator(
+                        process_requirements_frame, orient="horizontal"
+                    )
+
+                    # Display widgets:
+                    processing_entity_separator.grid(
+                        row=process_requirements_row,
+                        column=0,
+                        columnspan=3,
+                        sticky="ew",
+                        padx=PAD_WIDGET,
+                        pady=PAD_WIDGET,
+                    )
+
+                    process_requirements_row += 1
+
                 # Widgets:
                 processing_entity_label = ttk.Label(
                     process_requirements_frame,
-                    text=f'Consumption at "{processing_entity["name"]}" (units):',
+                    text=f'Consumption at "{processing_entity["name"]}":',
                 )
 
                 # Display widgets:
                 processing_entity_label.grid(
-                    row=row + 1,
+                    row=process_requirements_row,
                     column=0,
                     columnspan=3,
                     sticky="w",
@@ -420,7 +464,7 @@ class FlowObjectEditor:
                     pady=PAD_WIDGET,
                 )
 
-                row += 1
+                process_requirements_row += 1
 
                 # Process supply relationships:
                 process_supply_relationships = []
@@ -446,7 +490,7 @@ class FlowObjectEditor:
 
                     # Display no process supplies message:
                     no_process_supplies_label.grid(
-                        row=row + 1,
+                        row=process_requirements_row,
                         column=0,
                         columnspan=3,
                         sticky="w",
@@ -454,7 +498,7 @@ class FlowObjectEditor:
                         pady=PAD_WIDGET,
                     )
 
-                    row += 1
+                    process_requirements_row += 1
 
                 else:
                     # Process supplies:
@@ -469,6 +513,10 @@ class FlowObjectEditor:
                         process_supply_label = ttk.Label(
                             process_requirements_frame,
                             text=process_supply_entity["name"],
+                        )
+                        process_supply_unit_label = ttk.Label(
+                            process_requirements_frame,
+                            text=process_supply_entity["properties"].get("unit", ""),
                         )
                         quantity_variable = tk.StringVar(
                             value=str(
@@ -516,21 +564,28 @@ class FlowObjectEditor:
 
                         # Display widgets:
                         process_supply_label.grid(
-                            row=row + 1,
+                            row=process_requirements_row,
                             column=0,
                             sticky="w",
                             padx=PAD_WIDGET,
                             pady=PAD_WIDGET,
                         )
                         quantity_entry.grid(
-                            row=row + 1,
+                            row=process_requirements_row,
                             column=1,
                             sticky="w",
                             padx=PAD_WIDGET,
                             pady=PAD_WIDGET,
                         )
+                        process_supply_unit_label.grid(
+                            row=process_requirements_row,
+                            column=2,
+                            sticky="w",
+                            padx=PAD_WIDGET,
+                            pady=PAD_WIDGET,
+                        )
 
-                        row += 1
+                        process_requirements_row += 1
 
     def load_flow_objects(self):
         self.flow_object_listbox.delete(0, tk.END)
@@ -548,7 +603,7 @@ class FlowObjectEditor:
         self.flow_object_listbox.delete(selected_index[0])
 
         # Clear editor:
-        for widget in self.right_frame.winfo_children():
+        for widget in self.right_content_frame.winfo_children():
             widget.destroy()
 
         self.model_changed_callback(True)
@@ -575,7 +630,7 @@ class FlowObjectEditor:
         # Frame widget:
         self.left_frame = ttk.LabelFrame(
             self.main_frame,
-            text="Flow Objects",
+            text="Existing",
             style="DESE.Section.TLabelframe",
             padding=PAD_FRAME_IN,
         )
@@ -614,19 +669,60 @@ class FlowObjectEditor:
         # Right Frame
         # ==========================
 
-        # Widgets:
+        # Frame widget:
         self.right_frame = ttk.LabelFrame(
             self.main_frame,
-            text="Flow Object Properties",
+            text="Editor",
             style="DESE.Section.TLabelframe",
             padding=PAD_FRAME_IN,
         )
 
-        # Grid:
-        self.right_frame.columnconfigure(1, weight=1)
+        # Child widgets:
+        self.right_canvas = tk.Canvas(self.right_frame, highlightthickness=0)
+        self.right_scrollbar = ttk.Scrollbar(
+            self.right_frame, orient="vertical", command=self.right_canvas.yview
+        )
 
-        # Display widgets:
+        # Configure canvas:
+        self.right_canvas.configure(yscrollcommand=self.right_scrollbar.set)
+
+        # Grid:
+        self.right_frame.rowconfigure(0, weight=1)
+        self.right_frame.columnconfigure(0, weight=1)
+
+        # Display frame widget:
         self.right_frame.grid(row=0, column=1, sticky="nsew")
+
+        # Display child widgets:
+        self.right_canvas.grid(row=0, column=0, sticky="nsew")
+        self.right_scrollbar.grid(row=0, column=1, sticky="ns")
+
+        # Content frame:
+        self.right_content_frame = ttk.Frame(self.right_canvas)
+
+        # Grid:
+        self.right_content_frame.columnconfigure(0, weight=1)
+
+        # Display content frame:
+        self.right_canvas.create_window(
+            (0, 0), window=self.right_content_frame, anchor="nw"
+        )
+
+        # Event binding:
+        self.right_canvas.bind(
+            "<Configure>",
+            lambda event: self.right_canvas.itemconfigure(
+                self.right_canvas.find_withtag("all")[0], width=event.width
+            ),
+        )
+
+        # Update scroll region:
+        self.right_content_frame.bind(
+            "<Configure>",
+            lambda event: self.right_canvas.configure(
+                scrollregion=self.right_canvas.bbox("all")
+            ),
+        )
 
         # Load existing Flow Objects:
         self.load_flow_objects()

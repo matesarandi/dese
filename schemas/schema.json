@@ -251,6 +251,10 @@
               "type": "number",
               "unit": "piece",
               "description": "Quantity added at each replenishment event."
+            },
+            "unit": {
+              "type": "string",
+              "description": "Unit of measurement for the Process Supply."
             }
           }
         },
