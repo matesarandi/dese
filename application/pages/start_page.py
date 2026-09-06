@@ -2,13 +2,13 @@ import shutil
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from dese.constants import BUTTON_WIDTH, PAD_FRAME_IN, PAD_FRAME_OUT, PAD_WIDGET
+from dese.constants import BUTTON_WIDTH, PAD
 from dese.paths import TEMPLATE_DIR
 
 
 class StartPage(ttk.Frame):
     def __init__(self, parent, activate_model_callback, select_model_callback):
-        super().__init__(parent, padding=PAD_FRAME_IN)
+        super().__init__(parent, padding=PAD)
         self.selected_model_path = None
         self.new_model_path = None
         self.activate_model_callback = activate_model_callback
@@ -46,7 +46,7 @@ class StartPage(ttk.Frame):
 
     def create_new_model(self):
         template_path = TEMPLATE_DIR / "empty_model.json"
-        
+
         save_path = filedialog.asksaveasfilename(
             title="Create New Model",
             defaultextension=".json",
@@ -88,10 +88,8 @@ class StartPage(ttk.Frame):
         self.separator = ttk.Separator(self, orient="horizontal")
 
         # Display child widgets:
-        self.title_label.grid(
-            row=0, column=0, sticky="n", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
-        self.subtitle_label.grid(row=1, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET)
+        self.title_label.grid(row=0, column=0, sticky="n")
+        self.subtitle_label.grid(row=1, column=0)
         self.separator.grid(row=2, column=0, sticky="ew")
 
         # Open Existing Model Frame
@@ -102,7 +100,7 @@ class StartPage(ttk.Frame):
             self,
             text="Open Existing Model",
             style="DESE.Section.TLabelframe",
-            padding=PAD_FRAME_IN,
+            padding=PAD,
         )
 
         # Grid:
@@ -129,26 +127,14 @@ class StartPage(ttk.Frame):
         )
 
         # Display frame widget:
-        self.open_frame.grid(
-            row=3, column=0, sticky="ew", padx=PAD_FRAME_OUT, pady=PAD_FRAME_OUT
-        )
+        self.open_frame.grid(row=3, column=0, sticky="ew")
 
         # Display child widgets:
-        self.open_frame_subtitle.grid(
-            row=0, column=0, columnspan=2, sticky="w", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
-        self.selected_file_label.grid(
-            row=1, column=0, sticky="w", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
-        self.file_name_label.grid(
-            row=2, column=0, sticky="w", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
-        self.open_button.grid(
-            row=1, column=1, sticky="e", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
-        self.edit_button.grid(
-            row=2, column=1, sticky="e", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
+        self.open_frame_subtitle.grid(row=0, column=0, columnspan=2, sticky="w")
+        self.selected_file_label.grid(row=1, column=0, sticky="w")
+        self.file_name_label.grid(row=2, column=0, sticky="w")
+        self.open_button.grid(row=1, column=1, sticky="e")
+        self.edit_button.grid(row=2, column=1, sticky="e")
 
         # Create New Model Frame
         # ==========================
@@ -158,7 +144,7 @@ class StartPage(ttk.Frame):
             self,
             text="Create New Model",
             style="DESE.Section.TLabelframe",
-            padding=PAD_FRAME_IN,
+            padding=PAD,
         )
 
         # Grid:
@@ -193,23 +179,11 @@ class StartPage(ttk.Frame):
         )
 
         # Display frame widget:
-        self.new_frame.grid(
-            row=4, column=0, sticky="ew", padx=PAD_FRAME_OUT, pady=PAD_FRAME_OUT
-        )
+        self.new_frame.grid(row=4, column=0, sticky="ew")
 
         # Display child widgets:
-        self.new_frame_subtitle.grid(
-            row=0, column=0, columnspan=2, sticky="w", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
-        self.created_model_title_label.grid(
-            row=1, column=0, sticky="w", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
-        self.created_model_label.grid(
-            row=2, column=0, sticky="w", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
-        self.create_button.grid(
-            row=1, column=1, sticky="e", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
-        self.continue_button.grid(
-            row=2, column=1, sticky="e", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
+        self.new_frame_subtitle.grid(row=0, column=0, columnspan=2, sticky="w")
+        self.created_model_title_label.grid(row=1, column=0, sticky="w")
+        self.created_model_label.grid(row=2, column=0, sticky="w")
+        self.create_button.grid(row=1, column=1, sticky="e")
+        self.continue_button.grid(row=2, column=1, sticky="e")

@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from dese.constants import INPUT_WIDTH, PAD_FRAME_IN, PAD_WIDGET
+from dese.constants import INPUT_WIDTH, PAD
 from dese.utils import convert_property_value, validate_number
 
 
@@ -154,7 +154,7 @@ class FlowObjectEditor:
             self.right_content_frame,
             text="Flow Object Properties",
             style="DESE.Section.TLabelframe",
-            padding=PAD_FRAME_IN,
+            padding=PAD,
         )
 
         # Grid:
@@ -163,9 +163,7 @@ class FlowObjectEditor:
         flow_object_properties_frame.columnconfigure(2, weight=0)
 
         # Display flow object properties frame widget:
-        flow_object_properties_frame.grid(
-            row=0, column=0, columnspan=3, sticky="ew", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
+        flow_object_properties_frame.grid(row=0, column=0, columnspan=3, sticky="ew")
 
         # Required Properties
         # ==========================
@@ -184,8 +182,8 @@ class FlowObjectEditor:
             )
 
             # Display widgets:
-            entry.grid(row=row, column=1, sticky="w", padx=PAD_WIDGET, pady=PAD_WIDGET)
-            label.grid(row=row, column=0, sticky="w", padx=PAD_WIDGET, pady=PAD_WIDGET)
+            entry.grid(row=row, column=1, sticky="w")
+            label.grid(row=row, column=0, sticky="w")
 
             # Event binding:
             if property_name == "name":
@@ -230,8 +228,6 @@ class FlowObjectEditor:
             column=0,
             columnspan=3,
             sticky="ew",
-            padx=PAD_WIDGET,
-            pady=PAD_WIDGET,
         )
 
         row += 1
@@ -256,8 +252,6 @@ class FlowObjectEditor:
                     column=0,
                     columnspan=3,
                     sticky="ew",
-                    padx=PAD_WIDGET,
-                    pady=PAD_WIDGET,
                 )
 
                 row += 1
@@ -362,19 +356,11 @@ class FlowObjectEditor:
                 row=row,
                 column=0,
                 columnspan=2,
-                padx=PAD_WIDGET,
-                pady=PAD_WIDGET,
                 sticky="w",
             )
-            label.grid(
-                row=row + 1, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-            )
-            entry.grid(
-                row=row + 1, column=1, padx=(PAD_WIDGET, 0), pady=PAD_WIDGET, sticky="w"
-            )
-            unit_label.grid(
-                row=row + 1, column=2, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-            )
+            label.grid(row=row + 1, column=0, sticky="w")
+            entry.grid(row=row + 1, column=1, sticky="w")
+            unit_label.grid(row=row + 1, column=2, sticky="w")
 
             row += 3
 
@@ -386,7 +372,7 @@ class FlowObjectEditor:
             self.right_content_frame,
             text="Process Requirements",
             style="DESE.Section.TLabelframe",
-            padding=PAD_FRAME_IN,
+            padding=PAD,
         )
 
         # Display frame widget:
@@ -395,8 +381,6 @@ class FlowObjectEditor:
             column=0,
             columnspan=3,
             sticky="ew",
-            padx=PAD_WIDGET,
-            pady=PAD_WIDGET,
         )
 
         # Grid:
@@ -420,8 +404,6 @@ class FlowObjectEditor:
                 column=0,
                 columnspan=3,
                 sticky="w",
-                padx=PAD_WIDGET,
-                pady=PAD_WIDGET,
             )
 
             process_requirements_row += 1
@@ -442,8 +424,6 @@ class FlowObjectEditor:
                         column=0,
                         columnspan=3,
                         sticky="ew",
-                        padx=PAD_WIDGET,
-                        pady=PAD_WIDGET,
                     )
 
                     process_requirements_row += 1
@@ -460,8 +440,6 @@ class FlowObjectEditor:
                     column=0,
                     columnspan=3,
                     sticky="w",
-                    padx=PAD_WIDGET,
-                    pady=PAD_WIDGET,
                 )
 
                 process_requirements_row += 1
@@ -494,8 +472,6 @@ class FlowObjectEditor:
                         column=0,
                         columnspan=3,
                         sticky="w",
-                        padx=PAD_WIDGET,
-                        pady=PAD_WIDGET,
                     )
 
                     process_requirements_row += 1
@@ -567,22 +543,16 @@ class FlowObjectEditor:
                             row=process_requirements_row,
                             column=0,
                             sticky="w",
-                            padx=PAD_WIDGET,
-                            pady=PAD_WIDGET,
                         )
                         quantity_entry.grid(
                             row=process_requirements_row,
                             column=1,
                             sticky="w",
-                            padx=PAD_WIDGET,
-                            pady=PAD_WIDGET,
                         )
                         process_supply_unit_label.grid(
                             row=process_requirements_row,
                             column=2,
                             sticky="w",
-                            padx=PAD_WIDGET,
-                            pady=PAD_WIDGET,
                         )
 
                         process_requirements_row += 1
@@ -614,7 +584,7 @@ class FlowObjectEditor:
         # ==========================
 
         # Widgets:
-        self.main_frame = ttk.Frame(self.window, padding=PAD_FRAME_IN)
+        self.main_frame = ttk.Frame(self.window, padding=PAD)
 
         # Grid:
         self.main_frame.rowconfigure(0, weight=1)
@@ -632,7 +602,7 @@ class FlowObjectEditor:
             self.main_frame,
             text="Existing",
             style="DESE.Section.TLabelframe",
-            padding=PAD_FRAME_IN,
+            padding=PAD,
         )
 
         # Grid:
@@ -654,17 +624,13 @@ class FlowObjectEditor:
         self.flow_object_listbox.bind("<<ListboxSelect>>", self.select_flow_object)
 
         # Display frame widget:
-        self.left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, PAD_FRAME_IN))
+        self.left_frame.grid(row=0, column=0, sticky="nsew")
 
         # Display child widgets:
-        self.flow_object_listbox.grid(
-            row=0, column=0, sticky="nsew", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
-        self.button_frame.grid(
-            row=1, column=0, sticky="ew", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
-        self.add_button.grid(row=0, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET)
-        self.delete_button.grid(row=0, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET)
+        self.flow_object_listbox.grid(row=0, column=0, sticky="nsew")
+        self.button_frame.grid(row=1, column=0, sticky="ew")
+        self.add_button.grid(row=0, column=0)
+        self.delete_button.grid(row=0, column=1)
 
         # Right Frame
         # ==========================
@@ -674,7 +640,7 @@ class FlowObjectEditor:
             self.main_frame,
             text="Editor",
             style="DESE.Section.TLabelframe",
-            padding=PAD_FRAME_IN,
+            padding=PAD,
         )
 
         # Child widgets:

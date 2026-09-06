@@ -3,7 +3,7 @@ from tkinter import messagebox, ttk
 
 from dese.application.pages.model_editor_page import ModelEditorPage
 from dese.application.pages.start_page import StartPage
-from dese.constants import INPUT_WIDTH, PAD_FRAME_IN, PAD_WIDGET
+from dese.constants import INPUT_WIDTH
 from dese.core.schema_loader import SchemaLoader
 from dese.paths import SCHEMA_DIR
 from dese.styles import configure_styles
@@ -33,8 +33,8 @@ class DESEApp(tk.Tk):
             self.domain_combobox.set(domain)
 
     def show_domain_selector(self):
-        self.domain_label.grid(row=0, column=5, padx=PAD_WIDGET, pady=PAD_WIDGET)
-        self.domain_combobox.grid(row=0, column=6, padx=PAD_WIDGET, pady=PAD_WIDGET)
+        self.domain_label.grid(row=0, column=5)
+        self.domain_combobox.grid(row=0, column=6)
 
     def hide_domain_selector(self):
         self.domain_label.grid_remove()
@@ -218,17 +218,17 @@ class DESEApp(tk.Tk):
 
         # Display widgets:
         self.navigation_frame.grid(row=0, column=0, sticky="ew")
-        self.start_button.grid(row=0, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET)
-        self.model_editor_button.grid(row=0, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET)
-        self.model_file_label.grid(row=0, column=2, padx=PAD_WIDGET, pady=PAD_WIDGET)
-        self.unsaved_label.grid(row=0, column=3, padx=PAD_WIDGET, pady=PAD_WIDGET)
+        self.start_button.grid(row=0, column=0)
+        self.model_editor_button.grid(row=0, column=1)
+        self.model_file_label.grid(row=0, column=2)
+        self.unsaved_label.grid(row=0, column=3)
 
         # Grid:
         self.navigation_frame.columnconfigure(4, weight=1)
 
         # Display domain selector:
-        self.domain_label.grid(row=0, column=5, padx=PAD_WIDGET, pady=PAD_WIDGET)
-        self.domain_combobox.grid(row=0, column=6, padx=PAD_WIDGET, pady=PAD_WIDGET)
+        self.domain_label.grid(row=0, column=5)
+        self.domain_combobox.grid(row=0, column=6)
 
     # ==========================
     # Main Container

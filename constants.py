@@ -2,10 +2,7 @@
 # Constants
 # ==========================
 
-PAD_FRAME_IN = 8
-PAD_FRAME_OUT = 16
-
-PAD_WIDGET = 4
+PAD = 4
 
 BUTTON_WIDTH = 12
 

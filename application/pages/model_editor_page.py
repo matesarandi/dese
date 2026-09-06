@@ -6,8 +6,7 @@ from dese.application.pages.flow_object_editor import FlowObjectEditor
 from dese.constants import (
     BUTTON_WIDTH,
     INPUT_WIDTH,
-    PAD_FRAME_IN,
-    PAD_WIDGET,
+    PAD,
     SPINBOX_WIDTH,
 )
 from dese.utils import convert_property_value, validate_number
@@ -104,24 +103,12 @@ class ModelEditorPage(ttk.Frame):
         )
 
         # Display widgets:
-        self.add_entity_name_label.grid(
-            row=0, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-        )
-        self.add_entity_name_entry.grid(
-            row=0, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-        )
-        self.add_entity_type_label.grid(
-            row=1, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-        )
-        self.add_entity_type_combobox.grid(
-            row=1, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-        )
-        self.add_entity_cancel_button.grid(
-            row=2, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="e"
-        )
-        self.add_entity_confirm_button.grid(
-            row=2, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="e"
-        )
+        self.add_entity_name_label.grid(row=0, column=0, sticky="w")
+        self.add_entity_name_entry.grid(row=0, column=1, sticky="w")
+        self.add_entity_type_label.grid(row=1, column=0, sticky="w")
+        self.add_entity_type_combobox.grid(row=1, column=1, sticky="w")
+        self.add_entity_cancel_button.grid(row=2, column=1, sticky="e")
+        self.add_entity_confirm_button.grid(row=2, column=0, sticky="e")
 
     def confirm_add_entity(self):
         # Get input:
@@ -306,26 +293,18 @@ class ModelEditorPage(ttk.Frame):
             label.grid(
                 row=row + 1,
                 column=0,
-                padx=PAD_WIDGET,
-                pady=PAD_WIDGET,
                 sticky="w",
             )
             entry.grid(
                 row=row + 1,
                 column=1,
-                padx=(PAD_WIDGET, 0),
-                pady=PAD_WIDGET,
                 sticky="e",
             )
-            unit_label.grid(
-                row=row + 1, column=2, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-            )
+            unit_label.grid(row=row + 1, column=2, sticky="w")
             description_label.grid(
                 row=row,
                 column=0,
                 columnspan=2,
-                padx=PAD_WIDGET,
-                pady=PAD_WIDGET,
                 sticky="w",
             )
             separator.grid(
@@ -333,8 +312,6 @@ class ModelEditorPage(ttk.Frame):
                 column=0,
                 columnspan=3,
                 sticky="ew",
-                padx=PAD_WIDGET,
-                pady=PAD_WIDGET,
             )
 
             # Event binding:
@@ -395,7 +372,7 @@ class ModelEditorPage(ttk.Frame):
         # Display widgets:
         self.input_frame.grid(row=0, column=0, sticky="nsew")
         self.input_list_frame.grid(row=1, column=0, columnspan=2, sticky="nw")
-        input_label.grid(row=0, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w")
+        input_label.grid(row=0, column=0, sticky="w")
 
         self.input_count_spinbox = ttk.Spinbox(
             self.input_frame,
@@ -406,9 +383,7 @@ class ModelEditorPage(ttk.Frame):
             command=self.update_relationship_inputs,
         )
         self.input_count_spinbox.set(self.input_count)
-        self.input_count_spinbox.grid(
-            row=0, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-        )
+        self.input_count_spinbox.grid(row=0, column=1, sticky="w")
 
         # Output count:
         # ==========================
@@ -425,7 +400,7 @@ class ModelEditorPage(ttk.Frame):
         # Display widgets:
         self.output_frame.grid(row=0, column=1, sticky="nsew")
         self.output_list_frame.grid(row=1, column=0, columnspan=2, sticky="nw")
-        output_label.grid(row=0, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w")
+        output_label.grid(row=0, column=0, sticky="w")
 
         self.output_count_spinbox = ttk.Spinbox(
             self.output_frame,
@@ -436,9 +411,7 @@ class ModelEditorPage(ttk.Frame):
             command=self.update_relationship_outputs,
         )
         self.output_count_spinbox.set(self.output_count)
-        self.output_count_spinbox.grid(
-            row=0, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-        )
+        self.output_count_spinbox.grid(row=0, column=1, sticky="w")
 
         # Relationship Frame Layout
         # ==========================
@@ -618,12 +591,8 @@ class ModelEditorPage(ttk.Frame):
             # Event binding:
             combobox.bind("<<ComboboxSelected>>", self.relationship_selected)
 
-            label.grid(
-                row=index + 1, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-            )
-            combobox.grid(
-                row=index + 1, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-            )
+            label.grid(row=index + 1, column=0, sticky="w")
+            combobox.grid(row=index + 1, column=1, sticky="w")
 
     def update_relationship_outputs(self):
         # Clear existing output widgets:
@@ -678,12 +647,8 @@ class ModelEditorPage(ttk.Frame):
             # Event binding:
             combobox.bind("<<ComboboxSelected>>", self.relationship_selected)
 
-            label.grid(
-                row=index, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-            )
-            combobox.grid(
-                row=index, column=1, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="w"
-            )
+            label.grid(row=index, column=0, sticky="w")
+            combobox.grid(row=index, column=1, sticky="w")
 
     def update_entity_editor(self):
         if self.selected_entity is None:
@@ -993,7 +958,7 @@ class ModelEditorPage(ttk.Frame):
             self.structure_tab,
             text="Entities",
             style="DESE.Section.TLabelframe",
-            padding=PAD_FRAME_IN,
+            padding=PAD,
         )
 
         # Grid:
@@ -1041,18 +1006,14 @@ class ModelEditorPage(ttk.Frame):
         self.entity_table.column("outputs", width=250)
 
         # Display frame widget:
-        self.entity_table_frame.grid(
-            row=0, column=0, sticky="nsew", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
+        self.entity_table_frame.grid(row=0, column=0, sticky="nsew")
 
         # Display child widgets:
         self.entity_table.grid(row=0, column=0, sticky="nsew")
         self.entity_table_scrollbar.grid(row=0, column=1, sticky="ns")
-        self.entity_button_frame.grid(
-            row=1, column=0, columnspan=2, sticky="w", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
-        self.add_entity_button.grid(row=0, column=0, padx=PAD_WIDGET)
-        self.delete_entity_button.grid(row=0, column=1, padx=PAD_WIDGET)
+        self.entity_button_frame.grid(row=1, column=0, columnspan=2, sticky="w")
+        self.add_entity_button.grid(row=0, column=0)
+        self.delete_entity_button.grid(row=0, column=1)
 
         # Editor
         # ==========================
@@ -1062,7 +1023,7 @@ class ModelEditorPage(ttk.Frame):
             self.structure_tab,
             text="Editor",
             style="DESE.Section.TLabelframe",
-            padding=PAD_FRAME_IN,
+            padding=PAD,
         )
 
         # Grid:
@@ -1079,13 +1040,13 @@ class ModelEditorPage(ttk.Frame):
             self.editor,
             text="Properties",
             style="DESE.Section.TLabelframe",
-            padding=PAD_FRAME_IN,
+            padding=PAD,
         )
         self.relationship_editor = ttk.LabelFrame(
             self.editor,
             text="Relationships",
             style="DESE.Section.TLabelframe",
-            padding=PAD_FRAME_IN,
+            padding=PAD,
         )
         self.button_frame = ttk.Frame(self.editor)
 
@@ -1109,13 +1070,13 @@ class ModelEditorPage(ttk.Frame):
             self.basic_editor,
             text="Name",
             style="DESE.Section.TLabelframe",
-            padding=PAD_FRAME_IN,
+            padding=PAD,
         )
         self.type_editor = ttk.LabelFrame(
             self.basic_editor,
             text="Type",
             style="DESE.Section.TLabelframe",
-            padding=PAD_FRAME_IN,
+            padding=PAD,
         )
 
         # Grid (name editor):
@@ -1152,8 +1113,8 @@ class ModelEditorPage(ttk.Frame):
         )
 
         # Display basic editor widgets:
-        self.name_editor.grid(row=0, column=0, sticky="nsew", padx=(0, PAD_WIDGET // 2))
-        self.type_editor.grid(row=0, column=1, sticky="nsew", padx=(PAD_WIDGET // 2, 0))
+        self.name_editor.grid(row=0, column=0, sticky="nsew")
+        self.type_editor.grid(row=0, column=1, sticky="nsew")
 
         # Display property editor widgets:
         self.property_canvas.grid(row=0, column=0, sticky="nsew")
@@ -1195,18 +1156,10 @@ class ModelEditorPage(ttk.Frame):
         self.relationship_scrollbar.grid(row=0, column=1, sticky="ns")
 
         # Display section frames:
-        self.basic_editor.grid(
-            row=0, column=0, sticky="ew", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
-        self.property_editor.grid(
-            row=1, column=0, sticky="nsew", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
-        self.relationship_editor.grid(
-            row=1, column=1, sticky="nsew", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
-        self.button_frame.grid(
-            row=2, column=0, columnspan=2, sticky="ew", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
+        self.basic_editor.grid(row=0, column=0, sticky="ew")
+        self.property_editor.grid(row=1, column=0, sticky="nsew")
+        self.relationship_editor.grid(row=1, column=1, sticky="nsew")
+        self.button_frame.grid(row=2, column=0, columnspan=2, sticky="ew")
 
         # Name and type editor widgets:
         self.name_entry = ttk.Entry(self.name_editor, width=INPUT_WIDTH)
@@ -1231,25 +1184,15 @@ class ModelEditorPage(ttk.Frame):
         self.type_combobox.bind("<<ComboboxSelected>>", self.update_entity_type)
 
         # Display frame widget:
-        self.editor.grid(
-            row=1, column=0, sticky="nsew", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
+        self.editor.grid(row=1, column=0, sticky="nsew")
 
         # Display name and type editor widgets:
-        self.name_entry.grid(
-            row=0, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="ew"
-        )
-        self.type_combobox.grid(
-            row=0, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET, sticky="ew"
-        )
+        self.name_entry.grid(row=0, column=0, sticky="ew")
+        self.type_combobox.grid(row=0, column=0, sticky="ew")
 
         # Display button frame widgets:
-        self.save_model_button.grid(
-            row=0, column=1, sticky="e", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
-        self.flow_objects_button.grid(
-            row=0, column=0, sticky="e", padx=PAD_WIDGET, pady=PAD_WIDGET
-        )
+        self.save_model_button.grid(row=0, column=1, sticky="e")
+        self.flow_objects_button.grid(row=0, column=0, sticky="e")
 
     # ==========================
     # Visualization Tab
@@ -1292,14 +1235,14 @@ class ModelEditorPage(ttk.Frame):
 
         # Frame widget:
         self.process_frame = ttk.LabelFrame(
-            self.visualization_canvas, text="Process", padding=PAD_FRAME_IN
+            self.visualization_canvas, text="Process", padding=PAD
         )
 
         # Child widgets:
         self.process_label = ttk.Label(self.process_frame, text="Test Process")
 
         # Display child widgets:
-        self.process_label.grid(row=0, column=0, padx=PAD_WIDGET, pady=PAD_WIDGET)
+        self.process_label.grid(row=0, column=0)
 
         # Display frame widget:
         self.process_window = self.visualization_canvas.create_window(
@@ -1324,7 +1267,7 @@ class ModelEditorPage(ttk.Frame):
         # ==========================
 
         # Frame widget:
-        self.main_frame = ttk.Frame(self, padding=PAD_FRAME_IN)
+        self.main_frame = ttk.Frame(self)
 
         # Grid:
         self.main_frame.rowconfigure(0, weight=1)
