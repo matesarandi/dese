@@ -1208,6 +1208,7 @@ class ModelEditorPage(ttk.Frame):
 
         # Widgets:
         self.visualization_canvas = tk.Canvas(self.visualization_tab)
+        self.visualization_content_frame = ttk.Frame(self.visualization_canvas)
         self.visualization_horizontal_scrollbar = ttk.Scrollbar(
             self.visualization_tab,
             orient="horizontal",
@@ -1230,28 +1231,17 @@ class ModelEditorPage(ttk.Frame):
         self.visualization_horizontal_scrollbar.grid(row=1, column=0, sticky="ew")
         self.visualization_vertical_scrollbar.grid(row=0, column=1, sticky="ns")
 
-        # Process Frame
-        # ==========================
-
-        # Frame widget:
-        self.process_frame = ttk.LabelFrame(
-            self.visualization_canvas, text="Process", padding=PAD
+        # Embed content frame in canvas:
+        self.visualization_window = self.visualization_canvas.create_window(
+            0, 0, window=self.visualization_content_frame, anchor="nw"
         )
 
-        # Child widgets:
-        self.process_label = ttk.Label(self.process_frame, text="Test Process")
-
-        # Display child widgets:
-        self.process_label.grid(row=0, column=0)
-
-        # Display frame widget:
-        self.process_window = self.visualization_canvas.create_window(
-            100, 100, window=self.process_frame, anchor="nw"
-        )
-
-        # Scroll region:
-        self.visualization_canvas.configure(
-            scrollregion=self.visualization_canvas.bbox("all")
+        # Event binding:
+        self.visualization_content_frame.bind(
+            "<Configure>",
+            lambda event: self.visualization_canvas.configure(
+                scrollregion=self.visualization_canvas.bbox("all")
+            ),
         )
 
     # ==========================
