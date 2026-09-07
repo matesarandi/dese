@@ -12,6 +12,14 @@
       "type": {
         "type": "string",
         "description": "Entity Type defined by the selected domain."
+      },
+      "beginning_of_process": {
+        "type": "boolean",
+        "description": "Defines whether the Entity marks the beginning of the process."
+      },
+      "end_of_process": {
+        "type": "boolean",
+        "description": "Defines whether the Entity marks the end of the process."
       }
     }
   },

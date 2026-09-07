@@ -1064,6 +1064,8 @@ class ModelEditorPage(ttk.Frame):
         # Grid (basic editor):
         self.basic_editor.columnconfigure(0, weight=1, uniform="basic")
         self.basic_editor.columnconfigure(1, weight=1, uniform="basic")
+        self.basic_editor.columnconfigure(2, weight=1, uniform="basic")
+        self.basic_editor.columnconfigure(3, weight=1, uniform="basic")
 
         # Basic editor widgets:
         self.name_editor = ttk.LabelFrame(
@@ -1078,12 +1080,30 @@ class ModelEditorPage(ttk.Frame):
             style="DESE.Section.TLabelframe",
             padding=PAD,
         )
+        self.beginning_of_process_editor = ttk.LabelFrame(
+            self.basic_editor,
+            text="Beginning of Process",
+            style="DESE.Section.TLabelframe",
+            padding=PAD,
+        )
+        self.end_of_process_editor = ttk.LabelFrame(
+            self.basic_editor,
+            text="End of Process",
+            style="DESE.Section.TLabelframe",
+            padding=PAD,
+        )
 
         # Grid (name editor):
         self.name_editor.columnconfigure(0, weight=1)
 
         # Grid (type editor):
         self.type_editor.columnconfigure(0, weight=1)
+
+        # Grid (beginning of process editor):
+        self.beginning_of_process_editor.columnconfigure(0, weight=1)
+
+        # Grid (beginning of process editor):
+        self.end_of_process_editor.columnconfigure(0, weight=1)
 
         # Property editor widgets:
         self.property_canvas = tk.Canvas(self.property_editor)
@@ -1115,6 +1135,8 @@ class ModelEditorPage(ttk.Frame):
         # Display basic editor widgets:
         self.name_editor.grid(row=0, column=0, sticky="nsew")
         self.type_editor.grid(row=0, column=1, sticky="nsew")
+        self.beginning_of_process_editor.grid(row=0, column=2, sticky="nsew")
+        self.end_of_process_editor.grid(row=0, column=3, sticky="nsew")
 
         # Display property editor widgets:
         self.property_canvas.grid(row=0, column=0, sticky="nsew")
@@ -1156,15 +1178,21 @@ class ModelEditorPage(ttk.Frame):
         self.relationship_scrollbar.grid(row=0, column=1, sticky="ns")
 
         # Display section frames:
-        self.basic_editor.grid(row=0, column=0, sticky="ew")
+        self.basic_editor.grid(row=0, column=0, columnspan=2, sticky="ew")
         self.property_editor.grid(row=1, column=0, sticky="nsew")
         self.relationship_editor.grid(row=1, column=1, sticky="nsew")
         self.button_frame.grid(row=2, column=0, columnspan=2, sticky="ew")
 
-        # Name and type editor widgets:
+        # Name, type, beginning of process, end of process editor widgets:
         self.name_entry = ttk.Entry(self.name_editor, width=INPUT_WIDTH)
         self.type_combobox = ttk.Combobox(
             self.type_editor, state="readonly", width=INPUT_WIDTH
+        )
+        self.beginning_of_process_checkbutton = ttk.Checkbutton(
+            self.beginning_of_process_editor, text="Indicates the process beginning."
+        )
+        self.end_of_process_checkbutton = ttk.Checkbutton(
+            self.end_of_process_editor, text="Indicates the process end."
         )
 
         # Button frame widgets:
@@ -1186,9 +1214,11 @@ class ModelEditorPage(ttk.Frame):
         # Display frame widget:
         self.editor.grid(row=1, column=0, sticky="nsew")
 
-        # Display name and type editor widgets:
+        # Display name, type, beginning of process, end of process editor widgets:
         self.name_entry.grid(row=0, column=0, sticky="ew")
         self.type_combobox.grid(row=0, column=0, sticky="ew")
+        self.beginning_of_process_checkbutton.grid(row=0, column=0, sticky="w")
+        self.end_of_process_checkbutton.grid(row=0, column=0, sticky="w")
 
         # Display button frame widgets:
         self.save_model_button.grid(row=0, column=1, sticky="e")
