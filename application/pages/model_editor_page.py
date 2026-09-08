@@ -34,6 +34,16 @@ class ModelEditorPage(ttk.Frame):
     # Methods
     # ==========================
 
+    def is_main_entity(self, entity):
+        entity_schema = self.schema.get_entity_schema(
+            self.model_data["domain"], entity["type"]
+        )
+
+        if entity_schema is None:
+            return False
+
+        return entity_schema["hierarchy"]["role"] == "main"
+
     def open_flow_object_editor(self):
         FlowObjectEditor(
             self, self.model_data, self.schema, self.model_changed_callback
@@ -70,6 +80,45 @@ class ModelEditorPage(ttk.Frame):
     # ==========================
     # Add Entity Window
     # ==========================
+
+    def update_process_boundary_state(self):
+        beginning_entity = next(
+            (
+                entity
+                for entity in self.model_data["entities"]
+                if entity.get("beginning_of_process")
+            ),
+            None,
+        )
+
+        end_entity = next(
+            (
+                entity
+                for entity in self.model_data["entities"]
+                if entity.get("end_of_process")
+            ),
+            None,
+        )
+
+        if beginning_entity is not None:
+            if self.selected_entity is beginning_entity:
+                self.beginning_of_process_checkbutton.config(state="normal")
+
+            else:
+                self.beginning_of_process_checkbutton.config(state="disabled")
+
+        else:
+            self.beginning_of_process_checkbutton.config(state="normal")
+
+        if end_entity is not None:
+            if self.selected_entity is end_entity:
+                self.end_of_process_checkbutton.config(state="normal")
+
+            else:
+                self.end_of_process_checkbutton.config(state="disabled")
+
+        else:
+            self.end_of_process_checkbutton.config(state="normal")
 
     def add_entity(self):
         # Window:
@@ -487,6 +536,11 @@ class ModelEditorPage(ttk.Frame):
             if (
                 entity["type"] in allowed_source_types
                 and entity["id"] != selected_entity_id
+                and not (
+                    self.selected_entity.get("beginning_of_process")
+                    and self.is_main_entity(entity)
+                )
+                and not entity.get("end_of_process")
                 and not any(
                     (
                         (
@@ -520,6 +574,11 @@ class ModelEditorPage(ttk.Frame):
             if (
                 entity["type"] in allowed_target_types
                 and entity["id"] != selected_entity_id
+                and not (
+                    self.selected_entity.get("end_of_process")
+                    and self.is_main_entity(entity)
+                )
+                and not entity.get("beginning_of_process")
                 and not any(
                     (
                         (
@@ -657,6 +716,14 @@ class ModelEditorPage(ttk.Frame):
         self.name_entry.delete(0, "end")
         self.name_entry.insert(0, self.selected_entity["name"])
         self.type_combobox.set(self.selected_entity["type"])
+
+        self.beginning_of_process_variable.set(
+            self.selected_entity.get("beginning_of_process", False)
+        )
+        self.end_of_process_variable.set(
+            self.selected_entity.get("end_of_process", False)
+        )
+
         self.update_property_editor()
         self.update_relationship_editor()
 
@@ -721,6 +788,92 @@ class ModelEditorPage(ttk.Frame):
     # Event Callbacks
     # ==========================
 
+    def update_process_boundary(self):
+        if self.selected_entity is None:
+            return
+
+        beginning = self.beginning_of_process_variable.get()
+        end = self.end_of_process_variable.get()
+
+        if beginning:
+            input_relationships = [
+                relationship
+                for relationship in self.get_input_relationships()
+                if self.is_main_entity(
+                    next(
+                        entity
+                        for entity in self.model_data["entities"]
+                        if entity["id"] == relationship["source"]
+                    )
+                )
+            ]
+
+            if input_relationships:
+                input_descriptions = []
+
+                for relationship in input_relationships:
+                    source_entity_name = self.get_entity_name(relationship["source"])
+                    input_descriptions.append(source_entity_name)
+
+                messagebox.showwarning(
+                    "Invalid Beginning of Process",
+                    "This Entity has existing input relationships from: "
+                    + ", ".join(input_descriptions)
+                    + ". Delete the relationship(s) to mark this Entity "
+                    "as the beginning of the process.",
+                )
+
+                self.beginning_of_process_variable.set(False)
+
+                return
+
+            self.selected_entity["beginning_of_process"] = True
+
+        else:
+            self.selected_entity.pop("beginning_of_process", None)
+
+        if end:
+            output_relationships = [
+                relationship
+                for relationship in self.get_output_relationships()
+                if self.is_main_entity(
+                    next(
+                        entity
+                        for entity in self.model_data["entities"]
+                        if entity["id"] == relationship["target"]
+                    )
+                )
+            ]
+
+            if output_relationships:
+                output_descriptions = []
+
+                for relationship in output_relationships:
+                    target_entity_name = self.get_entity_name(relationship["target"])
+                    output_descriptions.append(target_entity_name)
+
+                messagebox.showwarning(
+                    "Invalid End of Process",
+                    "This Entity has existing output relationships to: "
+                    + ", ".join(output_descriptions)
+                    + ". Delete the relationship(s) to mark this Entity "
+                    "as the end of the process.",
+                )
+
+                self.end_of_process_variable.set(False)
+
+                return
+
+            self.selected_entity["end_of_process"] = True
+
+        else:
+            self.selected_entity.pop("end_of_process", None)
+
+        self.model_changed_callback(True)
+        self.update_process_boundary_state()
+        self.update_relationship_inputs()
+        self.update_relationship_outputs()
+
     def entity_selected(self, event):
         selected_item = self.entity_table.selection()
 
@@ -734,6 +887,7 @@ class ModelEditorPage(ttk.Frame):
                 if entity["id"] == entity_id:
                     self.selected_entity = entity
                     self.update_entity_editor()
+                    self.update_process_boundary_state()
                     break
 
     def get_entity_name(self, entity_id):
@@ -1183,16 +1337,26 @@ class ModelEditorPage(ttk.Frame):
         self.relationship_editor.grid(row=1, column=1, sticky="nsew")
         self.button_frame.grid(row=2, column=0, columnspan=2, sticky="ew")
 
+        # Process boundary variables:
+        self.beginning_of_process_variable = tk.BooleanVar()
+        self.end_of_process_variable = tk.BooleanVar()
+
         # Name, type, beginning of process, end of process editor widgets:
         self.name_entry = ttk.Entry(self.name_editor, width=INPUT_WIDTH)
         self.type_combobox = ttk.Combobox(
             self.type_editor, state="readonly", width=INPUT_WIDTH
         )
         self.beginning_of_process_checkbutton = ttk.Checkbutton(
-            self.beginning_of_process_editor, text="Indicates the process beginning."
+            self.beginning_of_process_editor,
+            text="Marks the beginning of the process.",
+            variable=self.beginning_of_process_variable,
+            command=self.update_process_boundary,
         )
         self.end_of_process_checkbutton = ttk.Checkbutton(
-            self.end_of_process_editor, text="Indicates the process end."
+            self.end_of_process_editor,
+            text="Marks the end of the process.",
+            variable=self.end_of_process_variable,
+            command=self.update_process_boundary,
         )
 
         # Button frame widgets:
