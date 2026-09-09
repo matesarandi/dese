@@ -41,7 +41,18 @@
       "type": "number",
       "unit": "%",
       "description": "Initial readiness of the Flow Object when it enters the process."
+    },
+    "generation_interval": {
+      "type": "number",
+      "unit": "s",
+      "description": "Time interval between generated Flow Objects."
+    },
+    "batch_size": {
+      "type": "number",
+      "unit": "piece",
+      "description": "Number of Flow Objects generated at each generation event."
     }
+    
   },
 
   "process_requirements": {
@@ -86,7 +97,6 @@
       "description": "The Production domain provides modelling guidance for production-oriented Entity Types / Roles and their relevant Properties, Relationships, and Rule Templates. These are modelling recommendations; they do not define hard-coded simulation behaviour.",
 
       "entity_types": [
-        "Source",
         "Processing",
         "Inspection",
         "Storage",
@@ -105,30 +115,6 @@
       ],
 
       "entity_schemas": [
-        {
-          "type": "Source",
-          "input_min": 0,
-          "input_max": 0,
-          "output_min": 1,
-          "output_max": 1,
-          "hierarchy": {
-            "role": "main",
-            "position": "center"
-          },
-          "properties": {
-            "generation_interval": {
-              "type": "number",
-              "unit": "s",
-              "description": "Time interval between generated Flow Objects."
-            },
-            "batch_size": {
-              "type": "number",
-              "unit": "piece",
-              "description": "Number of Flow Objects generated at each generation event."
-            }
-          }
-        },
-
         {
           "type": "Processing",
           "input_min": 1,
@@ -282,12 +268,6 @@
       ],
 
       "relationship_allowances": {
-        "Source": [
-          "Processing",
-          "Inspection",
-          "Storage",
-          "Transport"
-        ],
         "Processing": [
           "Processing",
           "Inspection",
