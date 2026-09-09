@@ -36,6 +36,51 @@ class ModelEditorPage(ttk.Frame):
     # Methods
     # ==========================
 
+    def move_entity_up(self):
+        selected_item = self.entity_table.selection()
+
+        if not selected_item:
+            return
+
+        item = selected_item[0]
+        index = self.entity_table.index(item)
+
+        if index == 0:
+            return
+
+        self.model_data["entities"][index - 1], self.model_data["entities"][index] = (
+            self.model_data["entities"][index],
+            self.model_data["entities"][index - 1],
+        )
+
+        self.refresh_entity_table()
+        self.entity_table.selection_set(self.entity_table.get_children()[index - 1])
+
+        self.update_model_changed_state()
+
+    def move_entity_down(self):
+        selected_item = self.entity_table.selection()
+
+        if not selected_item:
+            return
+
+        item = selected_item[0]
+        index = self.entity_table.index(item)
+        last_index = len(self.model_data["entities"]) - 1
+
+        if index == last_index:
+            return
+
+        self.model_data["entities"][index], self.model_data["entities"][index + 1] = (
+            self.model_data["entities"][index + 1],
+            self.model_data["entities"][index],
+        )
+
+        self.refresh_entity_table()
+        self.entity_table.selection_set(self.entity_table.get_children()[index + 1])
+
+        self.update_model_changed_state()
+
     def update_editor_state(self):
         state = "normal" if self.model_data["domain"] else "disabled"
 
@@ -1174,6 +1219,18 @@ class ModelEditorPage(ttk.Frame):
             width=BUTTON_WIDTH,
             command=self.delete_entity,
         )
+        self.move_entity_up_button = ttk.Button(
+            self.entity_button_frame,
+            text="Move up ↑",
+            width=BUTTON_WIDTH,
+            command=self.move_entity_up,
+        )
+        self.move_entity_down_button = ttk.Button(
+            self.entity_button_frame,
+            text="Move down ↓",
+            width=BUTTON_WIDTH,
+            command=self.move_entity_down,
+        )
 
         # Event binding:
         self.entity_table.bind("<<TreeviewSelect>>", self.entity_selected)
@@ -1200,6 +1257,8 @@ class ModelEditorPage(ttk.Frame):
         self.entity_button_frame.grid(row=1, column=0, columnspan=2, sticky="w")
         self.add_entity_button.grid(row=0, column=0)
         self.delete_entity_button.grid(row=0, column=1)
+        self.move_entity_up_button.grid(row=0, column=2)
+        self.move_entity_down_button.grid(row=0, column=3)
 
         # Editor
         # ==========================
