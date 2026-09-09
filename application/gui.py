@@ -32,13 +32,21 @@ class DESEApp(tk.Tk):
         if domain:
             self.domain_combobox.set(domain)
 
+        self.update_domain_frame()
+
+    def update_domain_frame(self):
+        if self.model_editor_page.model_data["domain"]:
+            self.domain_frame.configure(highlightthickness=0)
+
+        else:
+            self.domain_frame.configure(highlightthickness=2, highlightbackground="red")
+
     def show_domain_selector(self):
-        self.domain_label.grid(row=0, column=5)
-        self.domain_combobox.grid(row=0, column=6)
+        self.domain_frame.grid(row=0, column=5, columnspan=2)
 
     def hide_domain_selector(self):
-        self.domain_label.grid_remove()
-        self.domain_combobox.grid_remove()
+        self.domain_frame.grid_remove()
+        self.domain_frame.configure(highlightthickness=0)
 
     def update_domain(self):
         selected_domain = self.domain_combobox.get()
@@ -50,6 +58,7 @@ class DESEApp(tk.Tk):
             return
 
         self.model_editor_page.update_domain(selected_domain)
+        self.update_domain_frame()
 
     def activate_model(self, model_path):
         if (
@@ -203,9 +212,17 @@ class DESEApp(tk.Tk):
         )
         self.model_file_label = ttk.Label(self.navigation_frame, text="")
         self.unsaved_label = ttk.Label(self.navigation_frame, text="")
-        self.domain_label = ttk.Label(self.navigation_frame, text="Domain:")
+
+        # Domain Frame
+        # ==========================
+
+        # Frame widget:
+        self.domain_frame = tk.Frame(self.navigation_frame)
+
+        # Child widgets:
+        self.domain_label = ttk.Label(self.domain_frame, text="Domain:")
         self.domain_combobox = ttk.Combobox(
-            self.navigation_frame,
+            self.domain_frame,
             state="readonly",
             values=self.schema.get_domains(),
             width=INPUT_WIDTH,
@@ -226,9 +243,12 @@ class DESEApp(tk.Tk):
         # Grid:
         self.navigation_frame.columnconfigure(4, weight=1)
 
-        # Display domain selector:
-        self.domain_label.grid(row=0, column=5)
-        self.domain_combobox.grid(row=0, column=6)
+        # Display domain frame:
+        self.domain_frame.grid(row=0, column=5, columnspan=2)
+
+        # Display domain frame widgets:
+        self.domain_label.grid(row=0, column=0)
+        self.domain_combobox.grid(row=0, column=1)
 
     # ==========================
     # Main Container

@@ -36,6 +36,19 @@ class ModelEditorPage(ttk.Frame):
     # Methods
     # ==========================
 
+    def update_editor_state(self):
+        state = "normal" if self.model_data["domain"] else "disabled"
+
+        self.add_entity_button.config(state=state)
+        self.delete_entity_button.config(state=state)
+        self.flow_objects_button.config(state=state)
+
+        self.name_entry.config(state=state)
+        self.type_combobox.config(state=state)
+        self.save_model_button.config(state=state)
+        self.beginning_of_process_checkbutton.config(state=state)
+        self.end_of_process_checkbutton.config(state=state)
+
     def update_model_changed_state(self):
         self.model_changed_callback(self.model_data != self.saved_model_data)
 
@@ -277,6 +290,7 @@ class ModelEditorPage(ttk.Frame):
 
         self.model_data["domain"] = selected_domain
         self.update_type_selector()
+        self.update_editor_state()
         self.update_model_changed_state()
 
     def update_type_selector(self):
@@ -1504,8 +1518,7 @@ class ModelEditorPage(ttk.Frame):
         self.create_structure_tab()
         self.create_visualization_tab()
 
-        # Populate entity table:
+        # Initialize editor state:
         self.populate_entity_table()
-
-        # Update type selector:
         self.update_type_selector()
+        self.update_editor_state()
