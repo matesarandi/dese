@@ -1,3 +1,4 @@
+import copy
 import json
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -19,6 +20,7 @@ class ModelEditorPage(ttk.Frame):
         self.schema = schema
         self.model_changed_callback = model_changed_callback
         self.model_data = None
+        self.saved_model_data = None
         self.selected_entity = None
         self.input_count = 0
         self.output_count = 0
@@ -34,6 +36,9 @@ class ModelEditorPage(ttk.Frame):
     # Methods
     # ==========================
 
+    def update_model_changed_state(self):
+        self.model_changed_callback(self.model_data != self.saved_model_data)
+
     def is_main_entity(self, entity):
         entity_schema = self.schema.get_entity_schema(
             self.model_data["domain"], entity["type"]
@@ -46,7 +51,7 @@ class ModelEditorPage(ttk.Frame):
 
     def open_flow_object_editor(self):
         FlowObjectEditor(
-            self, self.model_data, self.schema, self.model_changed_callback
+            self, self.model_data, self.schema, self.update_model_changed_state
         )
 
     def generate_entity_id(self):
@@ -206,7 +211,7 @@ class ModelEditorPage(ttk.Frame):
         self.add_entity_name_entry.focus_set()
 
         # Model changed:
-        self.model_changed_callback(True)
+        self.update_model_changed_state()
 
     def clear_entity_editor(self):
         # Clear basic fields:
@@ -261,15 +266,18 @@ class ModelEditorPage(ttk.Frame):
         self.clear_entity_editor()
 
         # Model changed:
-        self.model_changed_callback(True)
+        self.update_model_changed_state()
 
     def update_domain(self, selected_domain):
         if not selected_domain:
             return
 
+        if self.model_data["domain"] == selected_domain:
+            return
+
         self.model_data["domain"] = selected_domain
         self.update_type_selector()
-        self.model_changed_callback(True)
+        self.update_model_changed_state()
 
     def update_type_selector(self):
         domain = self.model_data["domain"]
@@ -738,6 +746,8 @@ class ModelEditorPage(ttk.Frame):
             with open(self.model_path, "r") as file:
                 self.model_data = json.load(file)
 
+            self.saved_model_data = copy.deepcopy(self.model_data)
+
         except Exception as error:
             messagebox.showerror(
                 "Model loading error", f"Could not load model:\n{error}"
@@ -747,7 +757,9 @@ class ModelEditorPage(ttk.Frame):
     def save_model(self):
         with open(self.model_path, "w") as file:
             json.dump(self.model_data, file, indent=4)
-        self.model_changed_callback(False)
+
+        self.saved_model_data = copy.deepcopy(self.model_data)
+        self.update_model_changed_state()
 
     def populate_entity_table(self):
         for entity in self.model_data["entities"]:
@@ -875,10 +887,10 @@ class ModelEditorPage(ttk.Frame):
         else:
             self.selected_entity.pop("end_of_process", None)
 
-        self.model_changed_callback(True)
         self.update_process_boundary_state()
         self.update_relationship_inputs()
         self.update_relationship_outputs()
+        self.update_model_changed_state()
 
     def entity_selected(self, event):
         selected_item = self.entity_table.selection()
@@ -956,7 +968,7 @@ class ModelEditorPage(ttk.Frame):
         if selected_item:
             self.refresh_entity_table()
 
-        self.model_changed_callback(True)
+        self.update_model_changed_state()
 
     def update_entity_type(self, event=None):
         if self.selected_entity is None:
@@ -976,7 +988,7 @@ class ModelEditorPage(ttk.Frame):
 
         self.update_property_editor()
         self.update_relationship_editor()
-        self.model_changed_callback(True)
+        self.update_model_changed_state()
 
     def commit_entity_property(self, property_name, entry):
         self.update_entity_property(property_name)
@@ -1000,7 +1012,7 @@ class ModelEditorPage(ttk.Frame):
             return
 
         self.selected_entity["properties"][property_name] = new_value
-        self.model_changed_callback(True)
+        self.update_model_changed_state()
 
     def relationship_selected(self, event):
         entity_name = event.widget.get()
@@ -1024,7 +1036,7 @@ class ModelEditorPage(ttk.Frame):
 
                     self.input_relationship_ids[index] = None
                     self.refresh_entity_table()
-                    self.model_changed_callback(True)
+                    self.update_model_changed_state()
 
                 return
 
@@ -1066,7 +1078,7 @@ class ModelEditorPage(ttk.Frame):
 
                     self.output_relationship_ids[index] = None
                     self.refresh_entity_table()
-                    self.model_changed_callback(True)
+                    self.update_model_changed_state()
 
                 return
 
@@ -1098,7 +1110,7 @@ class ModelEditorPage(ttk.Frame):
             return
 
         self.refresh_entity_table()
-        self.model_changed_callback(True)
+        self.update_model_changed_state()
 
     # ==========================
     # Structure Tab

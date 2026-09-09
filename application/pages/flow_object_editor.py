@@ -6,13 +6,13 @@ from dese.utils import convert_property_value, validate_number
 
 
 class FlowObjectEditor:
-    def __init__(self, parent, model_data, schema, model_changed_callback):
+    def __init__(self, parent, model_data, schema, update_model_changed_state):
         self.window = tk.Toplevel(parent)
         self.window.title("Flow Objects")
         self.window.geometry("900x600")
         self.model_data = model_data
         self.schema = schema
-        self.model_changed_callback = model_changed_callback
+        self.update_model_changed_state = update_model_changed_state
 
         # Grid:
         self.window.rowconfigure(0, weight=1)
@@ -70,7 +70,7 @@ class FlowObjectEditor:
 
         self.model_data["flow_objects"].append(flow_object)
 
-        self.model_changed_callback(True)
+        self.update_model_changed_state()
 
         self.flow_object_listbox.insert(tk.END, flow_object["name"])
 
@@ -104,7 +104,7 @@ class FlowObjectEditor:
             self.flow_object_listbox.insert(flow_object_index, flow_object["name"])
             self.flow_object_listbox.selection_set(flow_object_index)
 
-        self.model_changed_callback(True)
+        self.update_model_changed_state()
 
     def commit_property_value(self, container, property_name, property_type, variable):
         self.update_flow_object_property(
@@ -124,7 +124,7 @@ class FlowObjectEditor:
 
         variable.set(str(new_value))
 
-        self.model_changed_callback(True)
+        self.update_model_changed_state()
 
     def get_processing_entities(self):
         return [
@@ -576,7 +576,7 @@ class FlowObjectEditor:
         for widget in self.right_content_frame.winfo_children():
             widget.destroy()
 
-        self.model_changed_callback(True)
+        self.update_model_changed_state()
 
     def create_widgets(self):
 
