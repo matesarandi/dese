@@ -540,7 +540,10 @@ class ModelEditorPage(ttk.Frame):
                     self.selected_entity.get("beginning_of_process")
                     and self.is_main_entity(entity)
                 )
-                and not entity.get("end_of_process")
+                and not (
+                    self.is_main_entity(self.selected_entity)
+                    and entity.get("end_of_process")
+                )
                 and not any(
                     (
                         (
@@ -578,7 +581,10 @@ class ModelEditorPage(ttk.Frame):
                     self.selected_entity.get("end_of_process")
                     and self.is_main_entity(entity)
                 )
-                and not entity.get("beginning_of_process")
+                and not (
+                    self.is_main_entity(self.selected_entity)
+                    and entity.get("beginning_of_process")
+                )
                 and not any(
                     (
                         (
