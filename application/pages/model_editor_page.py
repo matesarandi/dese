@@ -140,10 +140,6 @@ class ModelEditorPage(ttk.Frame):
 
         return f"R{number:03d}"
 
-    # ==========================
-    # Add Entity Window
-    # ==========================
-
     def update_process_boundary_state(self):
         beginning_entity = next(
             (
@@ -163,25 +159,57 @@ class ModelEditorPage(ttk.Frame):
             None,
         )
 
+        # Beginning of process:
         if beginning_entity is not None:
             if self.selected_entity is beginning_entity:
-                self.beginning_of_process_checkbutton.config(state="normal")
+                self.beginning_of_process_checkbutton.config(
+                    state="normal", text="Marks the beginning of the process."
+                )
 
             else:
-                self.beginning_of_process_checkbutton.config(state="disabled")
+                self.beginning_of_process_checkbutton.config(
+                    state="disabled", text=f"Selected: {beginning_entity['name']}"
+                )
+
+        elif self.selected_entity is not None and not self.is_main_entity(
+            self.selected_entity
+        ):
+            self.beginning_of_process_checkbutton.config(
+                state="disabled", text="Only main entities can be selected."
+            )
 
         else:
-            self.beginning_of_process_checkbutton.config(state="normal")
+            self.beginning_of_process_checkbutton.config(
+                state="normal", text="Marks the beginning of the process."
+            )
 
+        # End of process:
         if end_entity is not None:
             if self.selected_entity is end_entity:
-                self.end_of_process_checkbutton.config(state="normal")
+                self.end_of_process_checkbutton.config(
+                    state="normal", text="Marks the end of the process."
+                )
 
             else:
-                self.end_of_process_checkbutton.config(state="disabled")
+                self.end_of_process_checkbutton.config(
+                    state="disabled", text=f"Selected: {end_entity['name']}"
+                )
+
+        elif self.selected_entity is not None and not self.is_main_entity(
+            self.selected_entity
+        ):
+            self.end_of_process_checkbutton.config(
+                state="disabled", text="Only main entities can be selected."
+            )
 
         else:
-            self.end_of_process_checkbutton.config(state="normal")
+            self.end_of_process_checkbutton.config(
+                state="normal", text="Marks the end of the process."
+            )
+
+    # ==========================
+    # Add Entity Window
+    # ==========================
 
     def add_entity(self):
         # Window:
@@ -1439,13 +1467,11 @@ class ModelEditorPage(ttk.Frame):
         )
         self.beginning_of_process_checkbutton = ttk.Checkbutton(
             self.beginning_of_process_editor,
-            text="Marks the beginning of the process.",
             variable=self.beginning_of_process_variable,
             command=self.update_process_boundary,
         )
         self.end_of_process_checkbutton = ttk.Checkbutton(
             self.end_of_process_editor,
-            text="Marks the end of the process.",
             variable=self.end_of_process_variable,
             command=self.update_process_boundary,
         )
@@ -1581,3 +1607,4 @@ class ModelEditorPage(ttk.Frame):
         self.populate_entity_table()
         self.update_type_selector()
         self.update_editor_state()
+        self.update_process_boundary_state()
