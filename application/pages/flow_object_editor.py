@@ -1,15 +1,16 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from dese.constants import INPUT_WIDTH, PAD
+from dese.constants import BUTTON_WIDTH, INPUT_WIDTH, PAD
 from dese.utils import convert_property_value, validate_number
 
 
 class FlowObjectEditor:
     def __init__(self, parent, model_data, schema, update_model_changed_state):
+        self.parent = parent
         self.window = tk.Toplevel(parent)
         self.window.title("Flow Objects")
-        self.window.geometry("900x600")
+        self.window.geometry("800x600")
         self.model_data = model_data
         self.schema = schema
         self.update_model_changed_state = update_model_changed_state
@@ -588,6 +589,7 @@ class FlowObjectEditor:
 
         # Grid:
         self.main_frame.rowconfigure(0, weight=1)
+        self.main_frame.rowconfigure(1, weight=0)
         self.main_frame.columnconfigure(0, weight=0)
         self.main_frame.columnconfigure(1, weight=1)
 
@@ -607,18 +609,10 @@ class FlowObjectEditor:
 
         # Grid:
         self.left_frame.rowconfigure(0, weight=1)
-        self.left_frame.rowconfigure(1, weight=0)
         self.left_frame.columnconfigure(0, weight=1)
 
         # Child widgets:
         self.flow_object_listbox = tk.Listbox(self.left_frame)
-        self.button_frame = ttk.Frame(self.left_frame)
-        self.add_button = ttk.Button(
-            self.button_frame, text="Add", command=self.add_flow_object
-        )
-        self.delete_button = ttk.Button(
-            self.button_frame, text="Delete", command=self.delete_flow_object
-        )
 
         # Event binding:
         self.flow_object_listbox.bind("<<ListboxSelect>>", self.select_flow_object)
@@ -628,9 +622,6 @@ class FlowObjectEditor:
 
         # Display child widgets:
         self.flow_object_listbox.grid(row=0, column=0, sticky="nsew")
-        self.button_frame.grid(row=1, column=0, sticky="ew")
-        self.add_button.grid(row=0, column=0)
-        self.delete_button.grid(row=0, column=1)
 
         # Right Frame
         # ==========================
@@ -689,6 +680,43 @@ class FlowObjectEditor:
                 scrollregion=self.right_canvas.bbox("all")
             ),
         )
+
+        # Button Frame
+        # ==========================
+
+        # Frame widget:
+        self.button_frame = ttk.Frame(self.main_frame)
+
+        # Grid:
+        self.button_frame.columnconfigure(2, weight=1)
+
+        # Display frame widget:
+        self.button_frame.grid(row=1, column=0, columnspan=2, sticky="ew")
+
+        # Child widgets:
+        self.add_button = ttk.Button(
+            self.button_frame,
+            width=BUTTON_WIDTH,
+            text="Add",
+            command=self.add_flow_object,
+        )
+        self.delete_button = ttk.Button(
+            self.button_frame,
+            width=BUTTON_WIDTH,
+            text="Delete",
+            command=self.delete_flow_object,
+        )
+        self.save_button = ttk.Button(
+            self.button_frame,
+            width=BUTTON_WIDTH,
+            text="Save",
+            command=self.parent.save_model,
+        )
+
+        # Display child widgets:
+        self.add_button.grid(row=0, column=0, sticky="w")
+        self.delete_button.grid(row=0, column=1, sticky="w")
+        self.save_button.grid(row=0, column=2, sticky="e")
 
         # Load existing Flow Objects:
         self.load_flow_objects()

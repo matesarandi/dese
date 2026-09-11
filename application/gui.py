@@ -3,7 +3,7 @@ from tkinter import messagebox, ttk
 
 from dese.application.pages.model_editor_page import ModelEditorPage
 from dese.application.pages.start_page import StartPage
-from dese.constants import INPUT_WIDTH
+from dese.constants import BUTTON_WIDTH, INPUT_WIDTH
 from dese.core.schema_loader import SchemaLoader
 from dese.paths import SCHEMA_DIR
 from dese.styles import configure_styles
@@ -202,11 +202,15 @@ class DESEApp(tk.Tk):
         # Widgets:
         self.navigation_frame = ttk.Frame(self)
         self.start_button = ttk.Button(
-            self.navigation_frame, text="Start", command=self.open_start_page
+            self.navigation_frame,
+            width=BUTTON_WIDTH,
+            text="Start",
+            command=self.open_start_page,
         )
         self.model_editor_button = ttk.Button(
             self.navigation_frame,
             text="Model Editor",
+            width=BUTTON_WIDTH,
             command=self.open_model_editor,
             state="disabled",
         )
