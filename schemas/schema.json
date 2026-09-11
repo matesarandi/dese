@@ -37,11 +37,6 @@
       "type": "string",
       "description": "Identifier of the Processing Entity where the Flow Object enters the model."
     },
-    "initial_readiness": {
-      "type": "number",
-      "unit": "%",
-      "description": "Initial readiness of the Flow Object when it enters the process."
-    },
     "generation_interval": {
       "type": "number",
       "unit": "s",
