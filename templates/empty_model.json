@@ -1,6 +1,7 @@
 {
   "domain": null,
   "flow_objects": [],
+  "active_flow_object": null,
   "entities": [],
   "relationships": [],
   "rules": []

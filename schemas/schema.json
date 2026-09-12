@@ -44,10 +44,6 @@
   },
 
   "properties": {
-    "entry_entity": {
-      "type": "string",
-      "description": "Identifier of the Processing Entity where the Flow Object enters the model."
-    },
     "generation_interval": {
       "type": "number",
       "unit": "s",
@@ -148,12 +144,12 @@
             },
             "failure_probability": {
               "type": "number",
-              "description": "Probability that the entity fails during a given processing cycle."
+              "description": "Probability that the Entity fails during a given processing cycle."
             },
             "mean_repair_time": {
               "type": "number",
               "unit": "s",
-              "description": "Average time required to repair the entity after a failure."
+              "description": "Average time required to repair the Entity after a failure."
             }
           }
         },
@@ -181,12 +177,12 @@
             },
             "failure_probability": {
               "type": "number",
-              "description": "Probability that the entity fails during a given processing cycle."
+              "description": "Probability that the Entity fails during a given processing cycle."
             },
             "mean_repair_time": {
               "type": "number",
               "unit": "s",
-              "description": "Average time required to repair the entity after a failure."
+              "description": "Average time required to repair the Entity after a failure."
             }
           }
         },
@@ -243,12 +239,12 @@
             },
             "failure_probability": {
               "type": "number",
-              "description": "Probability that the entity fails during a given processing cycle."
+              "description": "Probability that the Entity fails during a given processing cycle."
             },
             "mean_repair_time": {
               "type": "number",
               "unit": "s",
-              "description": "Average time required to repair the entity after a failure."
+              "description": "Average time required to repair the Entity after a failure."
             }
           }
         },

@@ -85,6 +85,7 @@ class FlowObjectEditor:
         self.update_model_changed_state()
 
         self.flow_object_listbox.insert(tk.END, flow_object["name"])
+        self.refresh_active_flow_object_options()
 
         self.flow_object_listbox.selection_clear(0, tk.END)
         self.flow_object_listbox.selection_set(tk.END)
@@ -103,6 +104,16 @@ class FlowObjectEditor:
         self, flow_object, property_name, value, property_type
     ):
         value = convert_property_value(value, property_type)
+
+        # Keep the active_flow_object reference (a name, not an id) in sync
+        # with a rename, so it doesn't silently point at a name that no
+        # longer exists.
+        if (
+            property_name == "name"
+            and self.model_data.get("active_flow_object") == flow_object["name"]
+        ):
+            self.model_data["active_flow_object"] = value
+
         flow_object[property_name] = value
 
         if property_name == "name":
@@ -115,6 +126,7 @@ class FlowObjectEditor:
             self.flow_object_listbox.delete(flow_object_index)
             self.flow_object_listbox.insert(flow_object_index, flow_object["name"])
             self.flow_object_listbox.selection_set(flow_object_index)
+            self.refresh_active_flow_object_options()
 
         self.update_model_changed_state()
 
@@ -144,14 +156,6 @@ class FlowObjectEditor:
             for entity in self.model_data["entities"]
             if entity["type"] == ENTITY_TYPE_PROCESSING
         ]
-
-    def get_processing_entity_names(self):
-        return [entity["name"] for entity in self.get_processing_entities()]
-
-    def get_processing_entity_id(self, entity_name):
-        for entity in self.get_processing_entities():
-            if entity["name"] == entity_name:
-                return entity["id"]
 
     def display_flow_object_properties(self, flow_object):
         for widget in self.right_content_frame.winfo_children():
@@ -268,38 +272,6 @@ class FlowObjectEditor:
 
                 row += 1
 
-            if property_name == "entry_entity":
-                # entry_entity stores a Processing entity's id, but the combobox
-                # displays its name — the only property with this id/label split.
-                entry = ttk.Combobox(
-                    flow_object_properties_frame,
-                    values=self.get_processing_entity_names(),
-                    state="readonly",
-                    width=INPUT_WIDTH,
-                )
-
-                # Event binding:
-                entry.bind(
-                    "<<ComboboxSelected>>",
-                    lambda event, entry=entry, flow_object=flow_object: (
-                        self.update_flow_object_property(
-                            flow_object["properties"],
-                            "entry_entity",
-                            self.get_processing_entity_id(entry.get()),
-                            "string",
-                        )
-                    ),
-                )
-
-                # Display current value:
-                current_entity_id = flow_object["properties"].get("entry_entity")
-
-                if current_entity_id:
-                    for entity in self.get_processing_entities():
-                        if entity["id"] == current_entity_id:
-                            entry.set(entity["name"])
-                            break
-
             # Widgets:
             label = ttk.Label(
                 flow_object_properties_frame,
@@ -314,56 +286,55 @@ class FlowObjectEditor:
                 flow_object_properties_frame, text=property_description.get("unit", "")
             )
 
-            if property_name != "entry_entity":
-                variable = tk.StringVar(
-                    value=str(flow_object["properties"][property_name] or "")
+            variable = tk.StringVar(
+                value=str(flow_object["properties"][property_name] or "")
+            )
+
+            if property_description["type"] == NUMBER_PROPERTY_TYPE:
+                validate_command = (
+                    self.window.register(validate_number),
+                    "%P",
                 )
 
-                if property_description["type"] == NUMBER_PROPERTY_TYPE:
-                    validate_command = (
-                        self.window.register(validate_number),
-                        "%P",
-                    )
-
-                    entry = ttk.Entry(
-                        flow_object_properties_frame,
-                        width=INPUT_WIDTH,
-                        textvariable=variable,
-                        validate="key",
-                        validatecommand=validate_command,
-                    )
-
-                else:
-                    entry = ttk.Entry(
-                        flow_object_properties_frame,
-                        width=INPUT_WIDTH,
-                        textvariable=variable,
-                    )
-
-                # Event binding:
-                entry.bind(
-                    "<FocusOut>",
-                    lambda event, flow_object=flow_object, property_name=property_name, property_type=property_description["type"], variable=variable: (
-                        self.commit_property_value(
-                            flow_object["properties"],
-                            property_name,
-                            property_type,
-                            variable,
-                        )
-                    ),
+                entry = ttk.Entry(
+                    flow_object_properties_frame,
+                    width=INPUT_WIDTH,
+                    textvariable=variable,
+                    validate="key",
+                    validatecommand=validate_command,
                 )
 
-                entry.bind(
-                    "<Return>",
-                    lambda event, flow_object=flow_object, property_name=property_name, property_type=property_description["type"], variable=variable: (
-                        self.commit_property_value(
-                            flow_object["properties"],
-                            property_name,
-                            property_type,
-                            variable,
-                        )
-                    ),
+            else:
+                entry = ttk.Entry(
+                    flow_object_properties_frame,
+                    width=INPUT_WIDTH,
+                    textvariable=variable,
                 )
+
+            # Event binding:
+            entry.bind(
+                "<FocusOut>",
+                lambda event, flow_object=flow_object, property_name=property_name, property_type=property_description["type"], variable=variable: (
+                    self.commit_property_value(
+                        flow_object["properties"],
+                        property_name,
+                        property_type,
+                        variable,
+                    )
+                ),
+            )
+
+            entry.bind(
+                "<Return>",
+                lambda event, flow_object=flow_object, property_name=property_name, property_type=property_description["type"], variable=variable: (
+                    self.commit_property_value(
+                        flow_object["properties"],
+                        property_name,
+                        property_type,
+                        variable,
+                    )
+                ),
+            )
 
             # Display widgets:
             description_label.grid(
@@ -568,14 +539,37 @@ class FlowObjectEditor:
         for flow_object in self.model_data["flow_objects"]:
             self.flow_object_listbox.insert(tk.END, flow_object["name"])
 
+        self.refresh_active_flow_object_options()
+
+    def refresh_active_flow_object_options(self):
+        names = [flow_object["name"] for flow_object in self.model_data["flow_objects"]]
+        self.active_flow_object_combobox["values"] = [""] + names
+
+        active_name = self.model_data.get("active_flow_object")
+        self.active_flow_object_combobox.set(active_name if active_name in names else "")
+
+    def update_active_flow_object(self, event=None):
+        self.model_data["active_flow_object"] = (
+            self.active_flow_object_combobox.get() or None
+        )
+
+        self.update_model_changed_state()
+
     def delete_flow_object(self):
         selected_index = self.flow_object_listbox.curselection()
 
         if not selected_index:
             return
 
+        deleted_name = self.model_data["flow_objects"][selected_index[0]]["name"]
+
         del self.model_data["flow_objects"][selected_index[0]]
         self.flow_object_listbox.delete(selected_index[0])
+
+        if self.model_data.get("active_flow_object") == deleted_name:
+            self.model_data["active_flow_object"] = None
+
+        self.refresh_active_flow_object_options()
 
         # Clear editor:
         for widget in self.right_content_frame.winfo_children():
@@ -592,13 +586,50 @@ class FlowObjectEditor:
         self.main_frame = ttk.Frame(self.window, padding=PAD)
 
         # Grid:
-        self.main_frame.rowconfigure(0, weight=1)
-        self.main_frame.rowconfigure(1, weight=0)
+        # Row 0 (Active Flow Object) is fixed-height, row 1 (Existing)
+        # stretches — together their combined height matches the Editor
+        # LabelFrame, which spans both rows in column 1.
+        self.main_frame.rowconfigure(0, weight=0)
+        self.main_frame.rowconfigure(1, weight=1)
+        self.main_frame.rowconfigure(2, weight=0)
         self.main_frame.columnconfigure(0, weight=0)
         self.main_frame.columnconfigure(1, weight=1)
 
         # Display widgets:
         self.main_frame.grid(row=0, column=0, sticky="nsew")
+
+        # Active Flow Object Frame
+        # ==========================
+        # Which Flow Object the Simulation Engine currently takes into
+        # account — distinct from which one is merely selected for editing
+        # below in "Existing".
+
+        # Frame widget:
+        self.active_flow_object_frame = ttk.LabelFrame(
+            self.main_frame,
+            text="Active Flow Object",
+            style="DESE.Section.TLabelframe",
+            padding=PAD,
+        )
+
+        # Grid:
+        self.active_flow_object_frame.columnconfigure(0, weight=1)
+
+        # Child widgets:
+        self.active_flow_object_combobox = ttk.Combobox(
+            self.active_flow_object_frame, state="readonly"
+        )
+
+        # Event binding:
+        self.active_flow_object_combobox.bind(
+            "<<ComboboxSelected>>", self.update_active_flow_object
+        )
+
+        # Display frame widget:
+        self.active_flow_object_frame.grid(row=0, column=0, sticky="new")
+
+        # Display child widgets:
+        self.active_flow_object_combobox.grid(row=0, column=0, sticky="ew")
 
         # Left Frame
         # ==========================
@@ -622,7 +653,7 @@ class FlowObjectEditor:
         self.flow_object_listbox.bind("<<ListboxSelect>>", self.select_flow_object)
 
         # Display frame widget:
-        self.left_frame.grid(row=0, column=0, sticky="nsew")
+        self.left_frame.grid(row=1, column=0, sticky="nsew")
 
         # Display child widgets:
         self.flow_object_listbox.grid(row=0, column=0, sticky="nsew")
@@ -652,7 +683,7 @@ class FlowObjectEditor:
         self.right_frame.columnconfigure(0, weight=1)
 
         # Display frame widget:
-        self.right_frame.grid(row=0, column=1, sticky="nsew")
+        self.right_frame.grid(row=0, column=1, rowspan=2, sticky="nsew")
 
         # Display child widgets:
         self.right_canvas.grid(row=0, column=0, sticky="nsew")
@@ -695,7 +726,7 @@ class FlowObjectEditor:
         self.button_frame.columnconfigure(2, weight=1)
 
         # Display frame widget:
-        self.button_frame.grid(row=1, column=0, columnspan=2, sticky="ew")
+        self.button_frame.grid(row=2, column=0, columnspan=2, sticky="ew")
 
         # Child widgets:
         self.add_button = ttk.Button(

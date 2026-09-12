@@ -857,6 +857,10 @@ class ModelEditorPage(ttk.Frame):
             if not self.model_data.get("domain"):
                 self.model_data["domain"] = self.schema.get_domains()[0]
 
+            # Model files saved before active_flow_object existed don't have
+            # this key — default it rather than rejecting them.
+            self.model_data.setdefault("active_flow_object", None)
+
             self.saved_model_data = copy.deepcopy(self.model_data)
 
         except Exception as error:
