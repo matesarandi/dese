@@ -6,6 +6,7 @@ from tkinter import messagebox, ttk
 from dese.application.pages.flow_object_editor import FlowObjectEditor
 from dese.constants import (
     BUTTON_WIDTH,
+    CURRENT_SCHEMA_VERSION,
     ENTITY_ID_COLUMN_WIDTH,
     ENTITY_INPUTS_COLUMN_WIDTH,
     ENTITY_NAME_COLUMN_WIDTH,
@@ -41,7 +42,9 @@ class ModelEditorPage(ttk.Frame):
         self.input_relationship_ids = []
         self.output_relationship_ids = []
         self.load_model()
-        self.create_widgets()
+
+        if self.model_data is not None:
+            self.create_widgets()
 
     # ==========================
     # Methods
@@ -849,6 +852,12 @@ class ModelEditorPage(ttk.Frame):
         try:
             with open(self.model_path, "r") as file:
                 self.model_data = json.load(file)
+
+            if self.model_data.get("schema_version") != CURRENT_SCHEMA_VERSION:
+                raise ValueError(
+                    "This model was created with an older or incompatible "
+                    "schema version and cannot be opened."
+                )
 
             self.saved_model_data = copy.deepcopy(self.model_data)
 

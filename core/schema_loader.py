@@ -1,5 +1,7 @@
 import json
 
+from dese.constants import CURRENT_SCHEMA_VERSION
+
 
 class SchemaLoader:
     """Read-only, Tkinter-independent access to schema.json: domains, entity
@@ -17,6 +19,16 @@ class SchemaLoader:
     def load_schema(self):
         with open(self.schema_path, "r") as file:
             self.schema_data = json.load(file)
+
+        # schema.json is developer-maintained, so a version mismatch here is a
+        # bug to catch immediately rather than something to silently migrate.
+        schema_version = self.schema_data.get("schema_version")
+
+        if schema_version != CURRENT_SCHEMA_VERSION:
+            raise ValueError(
+                f"Unsupported schema.json version: {schema_version!r} "
+                f"(expected {CURRENT_SCHEMA_VERSION!r})."
+            )
 
     def get_domains(self):
         return [domain["name"] for domain in self.schema_data["domains"]]

@@ -1,8 +1,8 @@
-import shutil
+import json
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from dese.constants import BUTTON_WIDTH, PAD, TITLE_FONT, WRAP_LENGTH
+from dese.constants import BUTTON_WIDTH, CURRENT_SCHEMA_VERSION, PAD, TITLE_FONT, WRAP_LENGTH
 from dese.paths import DEFAULT_TEMPLATE_PATH
 
 
@@ -48,8 +48,6 @@ class StartPage(ttk.Frame):
             self.select_model_callback(model_path)
 
     def create_new_model(self):
-        template_path = DEFAULT_TEMPLATE_PATH
-
         save_path = filedialog.asksaveasfilename(
             title="Create New Model",
             defaultextension=".json",
@@ -58,7 +56,18 @@ class StartPage(ttk.Frame):
 
         if save_path:
             save_path = Path(save_path)
-            shutil.copy(template_path, save_path)
+
+            with open(DEFAULT_TEMPLATE_PATH, "r") as file:
+                model_data = json.load(file)
+
+            # Stamp the model with the current schema version at creation
+            # time, rather than hardcoding it in the template file, so a
+            # future version bump doesn't require updating the template too.
+            model_data["schema_version"] = CURRENT_SCHEMA_VERSION
+
+            with open(save_path, "w") as file:
+                json.dump(model_data, file, indent=4)
+
             self.new_model_path = save_path
             self.created_model_label.config(text=save_path.name)
 

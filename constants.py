@@ -50,6 +50,15 @@ WRAP_LENGTH = 400
 PROPERTY_ROW_HEIGHT = 3
 
 # ==========================
+# Schema Versioning
+# ==========================
+
+# schema.json and model files must declare this exact version. Bump this and
+# add migration/compatibility handling in SchemaLoader/ModelEditorPage.load_model
+# whenever the schema or model file format changes in a breaking way.
+CURRENT_SCHEMA_VERSION = "1.0"
+
+# ==========================
 # Schema Vocabulary
 # ==========================
 

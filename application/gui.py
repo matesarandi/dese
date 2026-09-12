@@ -180,6 +180,13 @@ class DESEApp(tk.Tk):
             self.container, self.editing_model_path, self.schema, self.set_model_changed
         )
 
+        # Loading may fail (e.g. an incompatible schema version) — load_model
+        # already showed an error dialog, so just fall back to the Start page
+        # instead of displaying a half-built, empty Model Editor.
+        if self.model_editor_page.model_data is None:
+            self.show_start_page()
+            return
+
         # Update domain selector:
         self.update_domain_selector()
 
