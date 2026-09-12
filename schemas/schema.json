@@ -23,6 +23,15 @@
         "type": "boolean",
         "description": "Defines whether the Entity marks the end of the process."
       }
+    },
+
+    "states": {
+      "status": {
+        "type": "enum",
+        "values": ["idle", "busy", "blocked", "down"],
+        "default": "idle",
+        "description": "Runtime operational status of the Entity during simulation: idle = no Flow Object available to process, busy = actively processing, blocked = finished processing but cannot hand off output because the next station has no capacity, down = failed and under repair. Set by the Simulation Engine, not user-configured."
+      }
     }
   },
 
@@ -54,7 +63,16 @@
       "unit": "s",
       "description": "Target maximum time the Flow Object should spend in the system."
     }
-    
+
+  },
+
+  "states": {
+    "quality": {
+      "type": "enum",
+      "values": ["good", "scrap"],
+      "default": "good",
+      "description": "Runtime quality outcome of the Flow Object: good = passed processing without issue, scrap = ruined during processing (e.g. by an Entity failure) and routed out of the main process. Set by the Simulation Engine, not user-configured."
+    }
   },
 
   "process_requirements": {
