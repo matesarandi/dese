@@ -124,15 +124,6 @@
         "Process Sink"
       ],
 
-      "rule_templates": [
-        "Routing",
-        "Eligibility",
-        "State Change",
-        "Failure",
-        "Generation",
-        "Capacity"
-      ],
-
       "entity_schemas": [
         {
           "type": "Processing",

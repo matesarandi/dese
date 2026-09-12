@@ -1636,8 +1636,8 @@ class ModelEditorPage(ttk.Frame):
         self.structure_tab = ttk.Frame(self.notebook)
         self.visualization_tab = ttk.Frame(self.notebook)
         # TODO(DESE-35): Rules tab intentionally has no content yet — the
-        # rule-based system architecture (rule_templates in schema.json) is not
-        # designed or implemented. This is a placeholder, not a bug.
+        # rule-based system architecture (Routing rules driven by decision
+        # points, see core/model.py) is still being designed. Not a bug.
         self.rules_tab = ttk.Frame(self.notebook)
 
         # Configuration:
