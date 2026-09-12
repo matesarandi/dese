@@ -67,7 +67,6 @@
         "structure": {
           "process_supply_entity_id": {
             "type": "number",
-            "unit": "piece",
             "description": "Required quantity of the Process Supply."
           }
         }
@@ -258,12 +257,10 @@
           "properties": {
             "capacity": {
               "type": "number",
-              "unit": "piece",
               "description": "Maximum quantity of supplied material available."
             },
             "initial_quantity": {
               "type": "number",
-              "unit": "piece",
               "description": "Initial quantity of supplied material."
             },
             "replenishment_interval": {
@@ -273,12 +270,7 @@
             },
             "replenishment_quantity": {
               "type": "number",
-              "unit": "piece",
               "description": "Quantity added at each replenishment event."
-            },
-            "unit": {
-              "type": "string",
-              "description": "Unit of measurement for the Process Supply."
             }
           }
         },

@@ -504,10 +504,6 @@ class FlowObjectEditor:
                             process_requirements_frame,
                             text=process_supply_entity["name"],
                         )
-                        process_supply_unit_label = ttk.Label(
-                            process_requirements_frame,
-                            text=process_supply_entity["properties"].get("unit", ""),
-                        )
                         quantity_variable = tk.StringVar(
                             value=str(
                                 flow_object["process_requirements"]
@@ -561,11 +557,6 @@ class FlowObjectEditor:
                         quantity_entry.grid(
                             row=process_requirements_row,
                             column=1,
-                            sticky="w",
-                        )
-                        process_supply_unit_label.grid(
-                            row=process_requirements_row,
-                            column=2,
                             sticky="w",
                         )
 
