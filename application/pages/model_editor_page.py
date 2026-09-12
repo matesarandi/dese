@@ -1,6 +1,7 @@
 import copy
 import json
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import messagebox, ttk
 
 from dese.application.pages.flow_object_editor import FlowObjectEditor
@@ -11,7 +12,7 @@ from dese.constants import (
     ENTITY_INPUTS_COLUMN_WIDTH,
     ENTITY_NAME_COLUMN_WIDTH,
     ENTITY_OUTPUTS_COLUMN_WIDTH,
-    ENTITY_TYPE_COLUMN_WIDTH,
+    ENTITY_ROLE_COLUMN_WIDTH,
     INPUT_WIDTH,
     MAIN_HIERARCHY_ROLE,
     NUMBER_PROPERTY_TYPE,
@@ -880,11 +881,21 @@ class ModelEditorPage(ttk.Frame):
 
             inputs = ", ".join(input_names)
             outputs = ", ".join(output_names)
+            is_main = self.is_main_entity(entity)
+            role = "Main" if is_main else "Secondary"
 
             self.entity_table.insert(
                 "",
                 "end",
-                values=(entity["id"], entity["name"], entity["type"], inputs, outputs),
+                values=(
+                    entity["id"],
+                    entity["name"],
+                    entity["type"],
+                    role,
+                    inputs,
+                    outputs,
+                ),
+                tags=("main",) if is_main else (),
             )
 
     def refresh_entity_table(self):
@@ -1219,6 +1230,9 @@ class ModelEditorPage(ttk.Frame):
     # Structure Tab
     # ==========================
 
+    def measure_column_width(self, texts, font, padding=20):
+        return max(font.measure(text) for text in texts) + padding
+
     def create_structure_tab(self):
         # Grid:
         self.structure_tab.rowconfigure(0, weight=1)
@@ -1243,8 +1257,22 @@ class ModelEditorPage(ttk.Frame):
         # Child widgets:
         self.entity_table = ttk.Treeview(
             self.entity_table_frame,
-            columns=("id", "name", "type", "inputs", "outputs"),
+            columns=("id", "name", "type", "role", "inputs", "outputs"),
             show="headings",
+        )
+
+        # Bold the name of main entities to set them visually apart from
+        # secondary ones (in addition to the explicit Role column).
+        default_font = tkfont.nametofont("TkDefaultFont")
+        bold_font = default_font.copy()
+        bold_font.configure(weight="bold")
+        self.entity_table.tag_configure("main", font=bold_font)
+
+        # Size the Type column to the longest entity type name actually
+        # defined in the schema, rather than a guessed fixed width.
+        type_column_width = self.measure_column_width(
+            self.schema.get_entity_types(self.model_data["domain"]) + ["Type"],
+            default_font,
         )
         self.entity_table_scrollbar = ttk.Scrollbar(
             self.entity_table_frame, orient="vertical", command=self.entity_table.yview
@@ -1283,12 +1311,14 @@ class ModelEditorPage(ttk.Frame):
         self.entity_table.heading("id", text="ID")
         self.entity_table.heading("name", text="Name")
         self.entity_table.heading("type", text="Type")
+        self.entity_table.heading("role", text="Role")
         self.entity_table.heading("inputs", text="Inputs")
         self.entity_table.heading("outputs", text="Outputs")
 
         self.entity_table.column("id", width=ENTITY_ID_COLUMN_WIDTH, stretch=False)
         self.entity_table.column("name", width=ENTITY_NAME_COLUMN_WIDTH)
-        self.entity_table.column("type", width=ENTITY_TYPE_COLUMN_WIDTH)
+        self.entity_table.column("type", width=type_column_width, stretch=False)
+        self.entity_table.column("role", width=ENTITY_ROLE_COLUMN_WIDTH, stretch=False)
         self.entity_table.column("inputs", width=ENTITY_INPUTS_COLUMN_WIDTH)
         self.entity_table.column("outputs", width=ENTITY_OUTPUTS_COLUMN_WIDTH)
 

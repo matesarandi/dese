@@ -28,7 +28,11 @@ ENTITY_ID_COLUMN_WIDTH = 50
 
 ENTITY_NAME_COLUMN_WIDTH = 110
 
-ENTITY_TYPE_COLUMN_WIDTH = 110
+# Type column width is computed at runtime from the schema's actual entity
+# type names (see ModelEditorPage.measure_column_width) — there is no fixed
+# constant for it.
+
+ENTITY_ROLE_COLUMN_WIDTH = 85
 
 ENTITY_INPUTS_COLUMN_WIDTH = 250
 
