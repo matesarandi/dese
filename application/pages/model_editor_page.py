@@ -1596,6 +1596,14 @@ class ModelEditorPage(ttk.Frame):
     # Rules Tab
     # ==========================
 
+    def on_tab_changed(self, event=None):
+        # The Routing frame's decision-point list can go stale if entities/
+        # relationships change on the Structure tab — refresh it whenever
+        # the user actually switches to the Rules tab, rather than hooking
+        # every entity/relationship mutation site.
+        if self.notebook.select() == str(self.rules_tab):
+            self.update_routing_frame()
+
     def create_rules_tab(self):
         # Grid:
         self.rules_tab.rowconfigure(0, weight=1)
@@ -1791,6 +1799,9 @@ class ModelEditorPage(ttk.Frame):
 
         # Display widgets:
         self.notebook.grid(row=0, column=0, sticky="nsew")
+
+        # Event binding:
+        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
 
         # Button Frame
         # ==========================
