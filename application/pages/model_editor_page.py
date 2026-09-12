@@ -6,14 +6,25 @@ from tkinter import messagebox, ttk
 from dese.application.pages.flow_object_editor import FlowObjectEditor
 from dese.constants import (
     BUTTON_WIDTH,
+    ENTITY_ID_COLUMN_WIDTH,
+    ENTITY_INPUTS_COLUMN_WIDTH,
+    ENTITY_NAME_COLUMN_WIDTH,
+    ENTITY_OUTPUTS_COLUMN_WIDTH,
+    ENTITY_TYPE_COLUMN_WIDTH,
     INPUT_WIDTH,
+    MAIN_HIERARCHY_ROLE,
+    NUMBER_PROPERTY_TYPE,
     PAD,
+    PROPERTY_ROW_HEIGHT,
     SPINBOX_WIDTH,
 )
-from dese.utils import convert_property_value, validate_number
+from dese.utils import convert_property_value, generate_id, validate_number
 
 
 class ModelEditorPage(ttk.Frame):
+    """Structure/Visualization/Rules tabs for a single model: owns model_data and
+    the schema-driven entity, property and relationship editors built on top of it."""
+
     def __init__(self, parent, model_path, schema, model_changed_callback):
         super().__init__(parent)
         self.model_path = model_path
@@ -35,6 +46,9 @@ class ModelEditorPage(ttk.Frame):
     # ==========================
     # Methods
     # ==========================
+
+    def get_domain(self):
+        return self.model_data["domain"]
 
     def move_entity_up(self):
         selected_item = self.entity_table.selection()
@@ -97,6 +111,9 @@ class ModelEditorPage(ttk.Frame):
         self.flow_objects_button.config(state=state)
 
     def update_model_changed_state(self):
+        # Comparing full snapshots (instead of an explicit dirty flag) avoids
+        # missing a `set_model_changed(True)` call after any of the many places
+        # that mutate model_data in place.
         self.model_changed_callback(self.model_data != self.saved_model_data)
 
     def is_main_entity(self, entity):
@@ -107,22 +124,21 @@ class ModelEditorPage(ttk.Frame):
         if entity_schema is None:
             return False
 
-        return entity_schema["hierarchy"]["role"] == "main"
+        return entity_schema["hierarchy"]["role"] == MAIN_HIERARCHY_ROLE
 
     def open_flow_object_editor(self):
         FlowObjectEditor(
-            self, self.model_data, self.schema, self.update_model_changed_state
+            self,
+            self.model_data,
+            self.schema,
+            self.update_model_changed_state,
+            self.save_model,
         )
 
     def generate_entity_id(self):
         existing_ids = [entity["id"] for entity in self.model_data["entities"]]
 
-        number = 1
-
-        while f"E{number:03d}" in existing_ids:
-            number += 1
-
-        return f"E{number:03d}"
+        return generate_id(existing_ids, "E")
 
     def is_entity_name_unique(self, entity, name):
         return all(
@@ -135,12 +151,7 @@ class ModelEditorPage(ttk.Frame):
             relationship["id"] for relationship in self.model_data["relationships"]
         ]
 
-        number = 1
-
-        while f"R{number:03d}" in existing_ids:
-            number += 1
-
-        return f"R{number:03d}"
+        return generate_id(existing_ids, "R")
 
     def update_process_boundary_state(self):
         beginning_entity = next(
@@ -407,7 +418,7 @@ class ModelEditorPage(ttk.Frame):
                 self.property_content, text=property_name.replace("_", " ").title()
             )
 
-            if description["type"] == "number":
+            if description["type"] == NUMBER_PROPERTY_TYPE:
                 validate_command = (self.register(validate_number), "%P")
 
                 entry = ttk.Entry(
@@ -435,7 +446,7 @@ class ModelEditorPage(ttk.Frame):
                 entry.insert(0, str(property_value))
 
             # Display widgets:
-            row = len(self.property_entries) * 3
+            row = len(self.property_entries) * PROPERTY_ROW_HEIGHT
             label.grid(
                 row=row + 1,
                 column=0,
@@ -615,6 +626,10 @@ class ModelEditorPage(ttk.Frame):
         return len(input_relationships) < entity_schema["input_max"]
 
     def get_allowed_input_entities(self, relationship_id=None):
+        # A beginning-of-process entity marks the single entry point of the main
+        # process chain, so it may not receive an input from another main entity;
+        # symmetrically, an end-of-process entity may not feed a main entity as
+        # output. This keeps exactly one entry/exit point per process.
         selected_type = self.selected_entity["type"]
         selected_entity_id = self.selected_entity["id"]
 
@@ -1272,11 +1287,11 @@ class ModelEditorPage(ttk.Frame):
         self.entity_table.heading("inputs", text="Inputs")
         self.entity_table.heading("outputs", text="Outputs")
 
-        self.entity_table.column("id", width=50, stretch=False)
-        self.entity_table.column("name", width=110)
-        self.entity_table.column("type", width=110)
-        self.entity_table.column("inputs", width=250)
-        self.entity_table.column("outputs", width=250)
+        self.entity_table.column("id", width=ENTITY_ID_COLUMN_WIDTH, stretch=False)
+        self.entity_table.column("name", width=ENTITY_NAME_COLUMN_WIDTH)
+        self.entity_table.column("type", width=ENTITY_TYPE_COLUMN_WIDTH)
+        self.entity_table.column("inputs", width=ENTITY_INPUTS_COLUMN_WIDTH)
+        self.entity_table.column("outputs", width=ENTITY_OUTPUTS_COLUMN_WIDTH)
 
         # Display frame widget:
         self.entity_table_frame.grid(row=0, column=0, sticky="nsew")
@@ -1377,7 +1392,7 @@ class ModelEditorPage(ttk.Frame):
         # Grid (beginning of process editor):
         self.beginning_of_process_editor.columnconfigure(0, weight=1)
 
-        # Grid (beginning of process editor):
+        # Grid (end of process editor):
         self.end_of_process_editor.columnconfigure(0, weight=1)
 
         # Property editor widgets:
@@ -1591,6 +1606,9 @@ class ModelEditorPage(ttk.Frame):
         # Child widgets:
         self.structure_tab = ttk.Frame(self.notebook)
         self.visualization_tab = ttk.Frame(self.notebook)
+        # TODO(DESE-35): Rules tab intentionally has no content yet — the
+        # rule-based system architecture (rule_templates in schema.json) is not
+        # designed or implemented. This is a placeholder, not a bug.
         self.rules_tab = ttk.Frame(self.notebook)
 
         # Configuration:
@@ -1603,6 +1621,8 @@ class ModelEditorPage(ttk.Frame):
 
         # Create tab content:
         self.create_structure_tab()
+        # NOTE(DESE-34): the Visualization tab's scroll infrastructure is set up
+        # here but not yet populated with a diagram — work in progress.
         self.create_visualization_tab()
 
         # Initialize editor state:

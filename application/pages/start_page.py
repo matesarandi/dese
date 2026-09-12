@@ -2,11 +2,14 @@ import shutil
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from dese.constants import BUTTON_WIDTH, PAD
-from dese.paths import TEMPLATE_DIR
+from dese.constants import BUTTON_WIDTH, PAD, TITLE_FONT, WRAP_LENGTH
+from dese.paths import DEFAULT_TEMPLATE_PATH
 
 
 class StartPage(ttk.Frame):
+    """Landing page: lets the user open an existing model or create a new one
+    from the empty model template."""
+
     def __init__(self, parent, activate_model_callback, select_model_callback):
         super().__init__(parent, padding=PAD)
         self.selected_model_path = None
@@ -45,7 +48,7 @@ class StartPage(ttk.Frame):
             self.select_model_callback(model_path)
 
     def create_new_model(self):
-        template_path = TEMPLATE_DIR / "empty_model.json"
+        template_path = DEFAULT_TEMPLATE_PATH
 
         save_path = filedialog.asksaveasfilename(
             title="Create New Model",
@@ -77,12 +80,12 @@ class StartPage(ttk.Frame):
 
         # Child widgets:
         self.title_label = ttk.Label(
-            self, text="Discrete Event Simulation Engine", font=("Arial", 16, "bold")
+            self, text="Discrete Event Simulation Engine", font=TITLE_FONT
         )
         self.subtitle_label = ttk.Label(
             self,
             text="Design systems freely without predefined workflows and explore emergent behavior through simulation.",
-            wraplength=400,
+            wraplength=WRAP_LENGTH,
             justify="center",
         )
         self.separator = ttk.Separator(self, orient="horizontal")
@@ -158,7 +161,7 @@ class StartPage(ttk.Frame):
         self.new_frame_subtitle = ttk.Label(
             self.new_frame,
             text="Create a new simulation model from scratch. Define entities, relationships and rules to build your simulation model.",
-            wraplength=400,
+            wraplength=WRAP_LENGTH,
             justify="left",
         )
         self.created_model_title_label = ttk.Label(

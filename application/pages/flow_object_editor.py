@@ -1,19 +1,30 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from dese.constants import BUTTON_WIDTH, INPUT_WIDTH, PAD
+from dese.constants import (
+    BUTTON_WIDTH,
+    ENTITY_TYPE_PROCESSING,
+    ENTITY_TYPE_PROCESS_SUPPLY,
+    FLOW_OBJECT_WINDOW_SIZE,
+    INPUT_WIDTH,
+    NUMBER_PROPERTY_TYPE,
+    PAD,
+)
 from dese.utils import convert_property_value, validate_number
 
 
 class FlowObjectEditor:
-    def __init__(self, parent, model_data, schema, update_model_changed_state):
-        self.parent = parent
+    """Popup window for editing the model's Flow Objects: their properties and
+    their Process Requirements towards Processing entities."""
+
+    def __init__(self, parent, model_data, schema, update_model_changed_state, save_callback):
         self.window = tk.Toplevel(parent)
         self.window.title("Flow Objects")
-        self.window.geometry("800x600")
+        self.window.geometry(FLOW_OBJECT_WINDOW_SIZE)
         self.model_data = model_data
         self.schema = schema
         self.update_model_changed_state = update_model_changed_state
+        self.save_callback = save_callback
 
         # Grid:
         self.window.rowconfigure(0, weight=1)
@@ -117,7 +128,7 @@ class FlowObjectEditor:
     def commit_process_requirement(
         self, flow_object, processing_entity_id, process_supply_entity_id, variable
     ):
-        new_value = convert_property_value(variable.get(), "number")
+        new_value = convert_property_value(variable.get(), NUMBER_PROPERTY_TYPE)
 
         flow_object["process_requirements"].setdefault(processing_entity_id, {})[
             process_supply_entity_id
@@ -131,7 +142,7 @@ class FlowObjectEditor:
         return [
             entity
             for entity in self.model_data["entities"]
-            if entity["type"] == "Processing"
+            if entity["type"] == ENTITY_TYPE_PROCESSING
         ]
 
     def get_processing_entity_names(self):
@@ -150,7 +161,7 @@ class FlowObjectEditor:
 
         row = 0
 
-        # Flow object properties frame widget::
+        # Flow object properties frame widget:
         flow_object_properties_frame = ttk.LabelFrame(
             self.right_content_frame,
             text="Flow Object Properties",
@@ -258,6 +269,8 @@ class FlowObjectEditor:
                 row += 1
 
             if property_name == "entry_entity":
+                # entry_entity stores a Processing entity's id, but the combobox
+                # displays its name — the only property with this id/label split.
                 entry = ttk.Combobox(
                     flow_object_properties_frame,
                     values=self.get_processing_entity_names(),
@@ -306,7 +319,7 @@ class FlowObjectEditor:
                     value=str(flow_object["properties"][property_name] or "")
                 )
 
-                if property_description["type"] == "number":
+                if property_description["type"] == NUMBER_PROPERTY_TYPE:
                     validate_command = (
                         self.window.register(validate_number),
                         "%P",
@@ -458,7 +471,7 @@ class FlowObjectEditor:
                         if entity["id"] == relationship["source"]
                     )
 
-                    if process_supply_entity["type"] == "Process Supply":
+                    if process_supply_entity["type"] == ENTITY_TYPE_PROCESS_SUPPLY:
                         process_supply_relationships.append(relationship)
 
                 if not process_supply_relationships:
@@ -710,7 +723,7 @@ class FlowObjectEditor:
             self.button_frame,
             width=BUTTON_WIDTH,
             text="Save",
-            command=self.parent.save_model,
+            command=self.save_callback,
         )
 
         # Display child widgets:

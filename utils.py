@@ -15,3 +15,12 @@ def convert_property_value(value, property_type):
         return float(value)
 
     return value
+
+
+def generate_id(existing_ids, prefix):
+    number = 1
+
+    while f"{prefix}{number:03d}" in existing_ids:
+        number += 1
+
+    return f"{prefix}{number:03d}"

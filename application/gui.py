@@ -3,16 +3,24 @@ from tkinter import messagebox, ttk
 
 from dese.application.pages.model_editor_page import ModelEditorPage
 from dese.application.pages.start_page import StartPage
-from dese.constants import BUTTON_WIDTH, INPUT_WIDTH
+from dese.constants import (
+    BUTTON_WIDTH,
+    INPUT_WIDTH,
+    MODEL_EDITOR_WINDOW_SIZE,
+    START_WINDOW_SIZE,
+)
 from dese.core.schema_loader import SchemaLoader
-from dese.paths import SCHEMA_DIR
+from dese.paths import DEFAULT_SCHEMA_PATH
 from dese.styles import configure_styles
 
 
 class DESEApp(tk.Tk):
+    """Top-level window: owns the schema, the active model path, and page routing
+    between the Start page and the Model Editor page."""
+
     def __init__(self):
         super().__init__()
-        self.schema = SchemaLoader(SCHEMA_DIR / "schema.json")
+        self.schema = SchemaLoader(DEFAULT_SCHEMA_PATH)
         self.model_changed = False
         self.editing_model_path = None
         self.selected_model_path = None
@@ -27,7 +35,7 @@ class DESEApp(tk.Tk):
     # ==========================
 
     def update_domain_selector(self):
-        domain = self.model_editor_page.model_data["domain"]
+        domain = self.model_editor_page.get_domain()
 
         if domain:
             self.domain_combobox.set(domain)
@@ -35,7 +43,7 @@ class DESEApp(tk.Tk):
         self.update_domain_frame()
 
     def update_domain_frame(self):
-        if self.model_editor_page.model_data["domain"]:
+        if self.model_editor_page.get_domain():
             self.domain_frame.configure(highlightthickness=0)
 
         else:
@@ -108,7 +116,7 @@ class DESEApp(tk.Tk):
 
     def create_window(self):
         # Window:
-        self.geometry("500x500")
+        self.geometry(START_WINDOW_SIZE)
         self.title("DESE")
 
         configure_styles()
@@ -124,7 +132,7 @@ class DESEApp(tk.Tk):
 
     def show_start_page(self):
         # Window:
-        self.geometry("500x500")
+        self.geometry(START_WINDOW_SIZE)
         self.resizable(False, False)
 
         # Hide domain selector:
@@ -158,7 +166,7 @@ class DESEApp(tk.Tk):
 
     def show_model_editor_page(self):
         # Window:
-        self.geometry("1100x750")
+        self.geometry(MODEL_EDITOR_WINDOW_SIZE)
         self.resizable(False, False)
 
         # Show domain selector:

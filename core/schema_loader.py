@@ -2,6 +2,9 @@ import json
 
 
 class SchemaLoader:
+    """Read-only, Tkinter-independent access to schema.json: domains, entity
+    types, entity/flow-object property schemas, and relationship allowances."""
+
     def __init__(self, schema_path):
         self.schema_path = schema_path
         self.schema_data = None
