@@ -46,6 +46,11 @@
       "type": "number",
       "unit": "piece",
       "description": "Number of Flow Objects generated at each generation event."
+    },
+    "target_lead_time": {
+      "type": "number",
+      "unit": "s",
+      "description": "Target maximum time the Flow Object should spend in the system."
     }
     
   },
@@ -130,6 +135,15 @@
               "type": "number",
               "unit": "piece",
               "description": "Maximum number of Flow Objects processed at once."
+            },
+            "failure_probability": {
+              "type": "number",
+              "description": "Probability that the entity fails during a given processing cycle."
+            },
+            "mean_repair_time": {
+              "type": "number",
+              "unit": "s",
+              "description": "Average time required to repair the entity after a failure."
             }
           }
         },
@@ -154,6 +168,15 @@
               "type": "number",
               "unit": "piece",
               "description": "Maximum number of Flow Objects inspected at once."
+            },
+            "failure_probability": {
+              "type": "number",
+              "description": "Probability that the entity fails during a given processing cycle."
+            },
+            "mean_repair_time": {
+              "type": "number",
+              "unit": "s",
+              "description": "Average time required to repair the entity after a failure."
             }
           }
         },
@@ -180,7 +203,8 @@
               "description": "Initial quantity of Flow Objects in the Storage."
             },
             "queue_rule": {
-              "type": "string",
+              "type": "enum",
+              "values": ["FIFO", "LIFO", "Priority"],
               "description": "Rule determining the order in which Flow Objects leave the Storage."
             }
           }
@@ -206,6 +230,15 @@
               "type": "number",
               "unit": "piece",
               "description": "Maximum number of Flow Objects that can be transported at once."
+            },
+            "failure_probability": {
+              "type": "number",
+              "description": "Probability that the entity fails during a given processing cycle."
+            },
+            "mean_repair_time": {
+              "type": "number",
+              "unit": "s",
+              "description": "Average time required to repair the entity after a failure."
             }
           }
         },

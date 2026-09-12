@@ -10,3 +10,4 @@ audit/06-configuration.md
 audit/05-maintainability.md
 .gitignore
 audit/04-architecture.md
+audit/08-kpi-definitions.md
