@@ -20,6 +20,13 @@ from dese.constants import (
     PROPERTY_ROW_HEIGHT,
     SPINBOX_WIDTH,
 )
+from dese.core.model import (
+    clear_routing_condition,
+    find_decision_points,
+    get_output_relationships,
+    get_routing_condition,
+    set_routing_condition,
+)
 from dese.utils import convert_property_value, generate_id, validate_number
 
 
@@ -1367,14 +1374,10 @@ class ModelEditorPage(ttk.Frame):
             style="DESE.Section.TLabelframe",
             padding=PAD,
         )
-        self.button_frame = ttk.Frame(self.editor)
 
         # Grid (property editor):
         self.property_editor.rowconfigure(0, weight=1)
         self.property_editor.columnconfigure(0, weight=1)
-
-        # Grid (button frame):
-        self.button_frame.columnconfigure(0, weight=1)
 
         # Grid (relationship editor):
         self.relationship_editor.rowconfigure(0, weight=1)
@@ -1500,7 +1503,6 @@ class ModelEditorPage(ttk.Frame):
         self.basic_editor.grid(row=0, column=0, columnspan=2, sticky="ew")
         self.property_editor.grid(row=1, column=0, sticky="nsew")
         self.relationship_editor.grid(row=1, column=1, sticky="nsew")
-        self.button_frame.grid(row=2, column=0, columnspan=2, sticky="ew")
 
         # Process boundary variables:
         self.beginning_of_process_variable = tk.BooleanVar()
@@ -1522,17 +1524,6 @@ class ModelEditorPage(ttk.Frame):
             command=self.update_process_boundary,
         )
 
-        # Button frame widgets:
-        self.save_model_button = ttk.Button(
-            self.button_frame, text="Save", width=BUTTON_WIDTH, command=self.save_model
-        )
-        self.flow_objects_button = ttk.Button(
-            self.button_frame,
-            text="Flow Objects",
-            width=BUTTON_WIDTH,
-            command=self.open_flow_object_editor,
-        )
-
         # Event binding:
         self.name_entry.bind("<FocusOut>", self.update_entity_name)
         self.name_entry.bind("<Return>", self.update_entity_name)
@@ -1546,10 +1537,6 @@ class ModelEditorPage(ttk.Frame):
         self.type_combobox.grid(row=0, column=0, sticky="ew")
         self.beginning_of_process_checkbutton.grid(row=0, column=0, sticky="w")
         self.end_of_process_checkbutton.grid(row=0, column=0, sticky="w")
-
-        # Display button frame widgets:
-        self.save_model_button.grid(row=0, column=1, sticky="e")
-        self.flow_objects_button.grid(row=0, column=0, sticky="e")
 
     # ==========================
     # Visualization Tab
@@ -1602,6 +1589,161 @@ class ModelEditorPage(ttk.Frame):
         )
 
     # ==========================
+    # Rules Tab
+    # ==========================
+
+    def create_rules_tab(self):
+        # Grid:
+        self.rules_tab.rowconfigure(0, weight=1)
+        self.rules_tab.columnconfigure(0, weight=1)
+
+        # Routing Frame
+        # ==========================
+
+        # Frame widget:
+        self.routing_frame = ttk.LabelFrame(
+            self.rules_tab,
+            text="Routing",
+            style="DESE.Section.TLabelframe",
+            padding=PAD,
+        )
+
+        # Grid:
+        # Column 3 is a trailing spacer that absorbs the extra width, so the
+        # OUTPUT/IF/combobox columns (0-2) stay packed together on the left
+        # instead of column 0 stretching and pushing the condition away.
+        self.routing_frame.columnconfigure(3, weight=1)
+
+        # Display frame widget:
+        self.routing_frame.grid(row=0, column=0, sticky="new")
+
+        # Content:
+        self.update_routing_frame()
+
+    def update_routing_frame(self):
+        # Clear existing widgets:
+        for widget in self.routing_frame.winfo_children():
+            widget.destroy()
+
+        decision_point_ids = find_decision_points(self.model_data, self.schema)
+
+        if not decision_point_ids:
+            no_decision_points_label = ttk.Label(
+                self.routing_frame,
+                text="No decision points found in this model yet.",
+            )
+            no_decision_points_label.grid(row=0, column=0, sticky="w")
+            return
+
+        row = 0
+
+        for decision_point_index, entity_id in enumerate(decision_point_ids):
+            if decision_point_index > 0:
+                # Widgets:
+                decision_point_separator = ttk.Separator(
+                    self.routing_frame, orient="horizontal"
+                )
+
+                # Display widgets:
+                decision_point_separator.grid(
+                    row=row, column=0, columnspan=4, sticky="ew"
+                )
+
+                row += 1
+
+            # Widgets:
+            at_label = ttk.Label(
+                self.routing_frame, text=f'AT "{self.get_entity_name(entity_id)}"'
+            )
+
+            # Display widgets:
+            at_label.grid(row=row, column=0, sticky="w")
+
+            row += 1
+
+            quality_values = self.schema.get_flow_object_schema()["states"]["quality"][
+                "values"
+            ]
+            output_relationships = get_output_relationships(entity_id, self.model_data)
+
+            # Values already assigned to another output at this same decision
+            # point, keyed by target — excluded from that output's own
+            # choices below so the same condition can't be assigned twice.
+            assigned_values_by_target = {
+                relationship["target"]: condition["equals"]
+                for relationship in output_relationships
+                if (
+                    condition := get_routing_condition(
+                        self.model_data, entity_id, relationship["target"]
+                    )
+                )
+                is not None
+            }
+            used_values = set(assigned_values_by_target.values())
+
+            for relationship in output_relationships:
+                target_id = relationship["target"]
+                current_value = assigned_values_by_target.get(target_id)
+
+                # Widgets:
+                output_label = ttk.Label(
+                    self.routing_frame,
+                    text=f'OUTPUT "{self.get_entity_name(target_id)}"',
+                )
+                condition_label = ttk.Label(
+                    self.routing_frame, text="IF Flow Object State IS"
+                )
+                condition_combobox = ttk.Combobox(
+                    self.routing_frame,
+                    state="readonly",
+                    width=INPUT_WIDTH,
+                    values=[""]
+                    + [
+                        value
+                        for value in quality_values
+                        if value == current_value or value not in used_values
+                    ],
+                )
+
+                if current_value is not None:
+                    condition_combobox.set(current_value)
+
+                # Event binding:
+                condition_combobox.bind(
+                    "<<ComboboxSelected>>",
+                    lambda event, entity_id=entity_id, target_id=target_id, combobox=condition_combobox: (
+                        self.commit_routing_condition(entity_id, target_id, combobox)
+                    ),
+                )
+
+                # Display widgets:
+                output_label.grid(row=row, column=0, sticky="w")
+                condition_label.grid(row=row, column=1, sticky="w")
+                condition_combobox.grid(row=row, column=2, sticky="w")
+
+                row += 1
+
+    def commit_routing_condition(self, entity_id, target_id, combobox):
+        selected_value = combobox.get()
+
+        if selected_value == "":
+            clear_routing_condition(self.model_data, entity_id, target_id)
+        else:
+            set_routing_condition(
+                self.model_data,
+                entity_id,
+                target_id,
+                scope="flow_object",
+                variable="quality",
+                equals=selected_value,
+            )
+
+        # Re-render so the other outputs at this decision point immediately
+        # reflect the value that was just assigned or cleared here.
+        self.update_routing_frame()
+        self.update_model_changed_state()
+
+    # ==========================
     # Model Editor Page
     # ==========================
 
@@ -1618,6 +1760,7 @@ class ModelEditorPage(ttk.Frame):
 
         # Grid:
         self.main_frame.rowconfigure(0, weight=1)
+        self.main_frame.rowconfigure(1, weight=0)
         self.main_frame.columnconfigure(0, weight=1)
 
         # Display frame widget:
@@ -1635,9 +1778,6 @@ class ModelEditorPage(ttk.Frame):
         # Child widgets:
         self.structure_tab = ttk.Frame(self.notebook)
         self.visualization_tab = ttk.Frame(self.notebook)
-        # TODO(DESE-35): Rules tab intentionally has no content yet — the
-        # rule-based system architecture (Routing rules driven by decision
-        # points, see core/model.py) is still being designed. Not a bug.
         self.rules_tab = ttk.Frame(self.notebook)
 
         # Configuration:
@@ -1648,11 +1788,45 @@ class ModelEditorPage(ttk.Frame):
         # Display widgets:
         self.notebook.grid(row=0, column=0, sticky="nsew")
 
+        # Button Frame
+        # ==========================
+        # Shared across every tab (Save/Flow Objects apply to the whole
+        # model, not just the Structure tab), so it lives below the
+        # notebook rather than inside one tab's content.
+
+        # Frame widget:
+        self.button_frame = ttk.Frame(self.main_frame, padding=PAD)
+
+        # Grid:
+        self.button_frame.columnconfigure(0, weight=1)
+
+        # Display frame widget:
+        self.button_frame.grid(row=1, column=0, sticky="ew")
+
+        # Child widgets:
+        self.save_model_button = ttk.Button(
+            self.button_frame, text="Save", width=BUTTON_WIDTH, command=self.save_model
+        )
+        self.flow_objects_button = ttk.Button(
+            self.button_frame,
+            text="Flow Objects",
+            width=BUTTON_WIDTH,
+            command=self.open_flow_object_editor,
+        )
+
+        # Display child widgets:
+        self.flow_objects_button.grid(row=0, column=0, sticky="e")
+        self.save_model_button.grid(row=0, column=1, sticky="e")
+
         # Create tab content:
         self.create_structure_tab()
         # NOTE(DESE-34): the Visualization tab's scroll infrastructure is set up
         # here but not yet populated with a diagram — work in progress.
         self.create_visualization_tab()
+        # TODO(DESE-35): the Routing frame is empty so far — it still needs to
+        # list find_decision_points() results and let the user define a rule
+        # for each. Not a bug.
+        self.create_rules_tab()
 
         # Initialize editor state:
         self.populate_entity_table()

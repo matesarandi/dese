@@ -66,3 +66,67 @@ def find_decision_points(model_data, schema):
     traverse(beginning_entity["id"])
 
     return decision_points
+
+
+def find_routing_rule(model_data, entity_id):
+    return next(
+        (
+            rule
+            for rule in model_data["rules"]
+            if rule.get("type") == "Routing" and rule.get("at") == entity_id
+        ),
+        None,
+    )
+
+
+def get_routing_condition(model_data, entity_id, target_id):
+    rule = find_routing_rule(model_data, entity_id)
+
+    if rule is None:
+        return None
+
+    output = next(
+        (output for output in rule["outputs"] if output["target"] == target_id),
+        None,
+    )
+
+    if output is None:
+        return None
+
+    return output.get("condition")
+
+
+def set_routing_condition(model_data, entity_id, target_id, scope, variable, equals):
+    rule = find_routing_rule(model_data, entity_id)
+
+    if rule is None:
+        rule = {"type": "Routing", "at": entity_id, "outputs": []}
+        model_data["rules"].append(rule)
+
+    output = next(
+        (output for output in rule["outputs"] if output["target"] == target_id),
+        None,
+    )
+
+    condition = {"scope": scope, "variable": variable, "equals": equals}
+
+    if output is None:
+        rule["outputs"].append({"target": target_id, "condition": condition})
+    else:
+        output["condition"] = condition
+
+
+def clear_routing_condition(model_data, entity_id, target_id):
+    rule = find_routing_rule(model_data, entity_id)
+
+    if rule is None:
+        return
+
+    rule["outputs"] = [
+        output for output in rule["outputs"] if output["target"] != target_id
+    ]
+
+    # Drop the rule entirely once none of its outputs have a condition left,
+    # instead of leaving an empty, orphaned rule in model_data["rules"].
+    if not rule["outputs"]:
+        model_data["rules"].remove(rule)
