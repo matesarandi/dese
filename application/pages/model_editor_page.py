@@ -99,19 +99,19 @@ class ModelEditorPage(ttk.Frame):
         self.update_model_changed_state()
 
     def update_editor_state(self):
-        state = "normal" if self.model_data["domain"] else "disabled"
+        # Every model now has a domain from creation onward (no domain
+        # selector to wait for), so the editor controls are always enabled.
+        self.add_entity_button.config(state="normal")
+        self.delete_entity_button.config(state="normal")
+        self.move_entity_up_button.config(state="normal")
+        self.move_entity_down_button.config(state="normal")
 
-        self.add_entity_button.config(state=state)
-        self.delete_entity_button.config(state=state)
-        self.move_entity_up_button.config(state=state)
-        self.move_entity_down_button.config(state=state)
-
-        self.name_entry.config(state=state)
-        self.type_combobox.config(state=state)
-        self.save_model_button.config(state=state)
-        self.beginning_of_process_checkbutton.config(state=state)
-        self.end_of_process_checkbutton.config(state=state)
-        self.flow_objects_button.config(state=state)
+        self.name_entry.config(state="normal")
+        self.type_combobox.config(state="normal")
+        self.save_model_button.config(state="normal")
+        self.beginning_of_process_checkbutton.config(state="normal")
+        self.end_of_process_checkbutton.config(state="normal")
+        self.flow_objects_button.config(state="normal")
 
     def update_model_changed_state(self):
         # Comparing full snapshots (instead of an explicit dirty flag) avoids
@@ -370,26 +370,10 @@ class ModelEditorPage(ttk.Frame):
         # Model changed:
         self.update_model_changed_state()
 
-    def update_domain(self, selected_domain):
-        if not selected_domain:
-            return
-
-        if self.model_data["domain"] == selected_domain:
-            return
-
-        self.model_data["domain"] = selected_domain
-        self.update_type_selector()
-        self.update_editor_state()
-        self.update_model_changed_state()
-
     def update_type_selector(self):
-        domain = self.model_data["domain"]
-
-        if not domain:
-            self.type_combobox["values"] = []
-            return
-
-        self.type_combobox["values"] = self.schema.get_entity_types(domain)
+        self.type_combobox["values"] = self.schema.get_entity_types(
+            self.model_data["domain"]
+        )
 
     def update_property_editor(self):
         if self.selected_entity is None:
@@ -858,6 +842,12 @@ class ModelEditorPage(ttk.Frame):
                     "This model was created with an older or incompatible "
                     "schema version and cannot be opened."
                 )
+
+            # There is no domain selector anymore — every model uses the
+            # schema's default (Production) domain. Fall back to it for any
+            # model file that predates this default (its "domain" is null).
+            if not self.model_data.get("domain"):
+                self.model_data["domain"] = self.schema.get_domains()[0]
 
             self.saved_model_data = copy.deepcopy(self.model_data)
 

@@ -5,7 +5,6 @@ from dese.application.pages.model_editor_page import ModelEditorPage
 from dese.application.pages.start_page import StartPage
 from dese.constants import (
     BUTTON_WIDTH,
-    INPUT_WIDTH,
     MODEL_EDITOR_WINDOW_SIZE,
     START_WINDOW_SIZE,
 )
@@ -33,40 +32,6 @@ class DESEApp(tk.Tk):
     # ==========================
     # Methods
     # ==========================
-
-    def update_domain_selector(self):
-        domain = self.model_editor_page.get_domain()
-
-        if domain:
-            self.domain_combobox.set(domain)
-
-        self.update_domain_frame()
-
-    def update_domain_frame(self):
-        if self.model_editor_page.get_domain():
-            self.domain_frame.configure(highlightthickness=0)
-
-        else:
-            self.domain_frame.configure(highlightthickness=2, highlightbackground="red")
-
-    def show_domain_selector(self):
-        self.domain_frame.grid(row=0, column=5, columnspan=2)
-
-    def hide_domain_selector(self):
-        self.domain_frame.grid_remove()
-        self.domain_frame.configure(highlightthickness=0)
-
-    def update_domain(self):
-        selected_domain = self.domain_combobox.get()
-
-        if not selected_domain:
-            return
-
-        if not hasattr(self, "model_editor_page"):
-            return
-
-        self.model_editor_page.update_domain(selected_domain)
-        self.update_domain_frame()
 
     def activate_model(self, model_path):
         if (
@@ -135,15 +100,12 @@ class DESEApp(tk.Tk):
         self.geometry(START_WINDOW_SIZE)
         self.resizable(False, False)
 
-        # Hide domain selector:
-        self.hide_domain_selector()
-
         # Clear page:
         self.clear_page()
 
         # Widgets:
         self.start_page = StartPage(
-            self.container, self.activate_model, self.select_model
+            self.container, self.schema, self.activate_model, self.select_model
         )
 
         # Display widgets:
@@ -169,9 +131,6 @@ class DESEApp(tk.Tk):
         self.geometry(MODEL_EDITOR_WINDOW_SIZE)
         self.resizable(False, False)
 
-        # Show domain selector:
-        self.show_domain_selector()
-
         # Clear page:
         self.clear_page()
 
@@ -186,9 +145,6 @@ class DESEApp(tk.Tk):
         if self.model_editor_page.model_data is None:
             self.show_start_page()
             return
-
-        # Update domain selector:
-        self.update_domain_selector()
 
         # Display widgets:
         self.model_editor_page.grid(row=0, column=0, sticky="nsew")
@@ -232,26 +188,6 @@ class DESEApp(tk.Tk):
         self.model_file_label = ttk.Label(self.navigation_frame, text="")
         self.unsaved_label = ttk.Label(self.navigation_frame, text="")
 
-        # Domain Frame
-        # ==========================
-
-        # Frame widget:
-        self.domain_frame = tk.Frame(self.navigation_frame)
-
-        # Child widgets:
-        self.domain_label = ttk.Label(self.domain_frame, text="Domain:")
-        self.domain_combobox = ttk.Combobox(
-            self.domain_frame,
-            state="readonly",
-            values=self.schema.get_domains(),
-            width=INPUT_WIDTH,
-        )
-
-        # Event binding:
-        self.domain_combobox.bind(
-            "<<ComboboxSelected>>", lambda event: self.update_domain()
-        )
-
         # Display widgets:
         self.navigation_frame.grid(row=0, column=0, sticky="ew")
         self.start_button.grid(row=0, column=0)
@@ -261,13 +197,6 @@ class DESEApp(tk.Tk):
 
         # Grid:
         self.navigation_frame.columnconfigure(4, weight=1)
-
-        # Display domain frame:
-        self.domain_frame.grid(row=0, column=5, columnspan=2)
-
-        # Display domain frame widgets:
-        self.domain_label.grid(row=0, column=0)
-        self.domain_combobox.grid(row=0, column=1)
 
     # ==========================
     # Main Container

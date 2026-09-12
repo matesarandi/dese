@@ -10,8 +10,9 @@ class StartPage(ttk.Frame):
     """Landing page: lets the user open an existing model or create a new one
     from the empty model template."""
 
-    def __init__(self, parent, activate_model_callback, select_model_callback):
+    def __init__(self, parent, schema, activate_model_callback, select_model_callback):
         super().__init__(parent, padding=PAD)
+        self.schema = schema
         self.selected_model_path = None
         self.new_model_path = None
         self.activate_model_callback = activate_model_callback
@@ -60,10 +61,12 @@ class StartPage(ttk.Frame):
             with open(DEFAULT_TEMPLATE_PATH, "r") as file:
                 model_data = json.load(file)
 
-            # Stamp the model with the current schema version at creation
-            # time, rather than hardcoding it in the template file, so a
-            # future version bump doesn't require updating the template too.
+            # Stamp the model with the current schema version and default
+            # domain at creation time, rather than hardcoding them in the
+            # template file, so a future version/domain change doesn't
+            # require updating the template too.
             model_data["schema_version"] = CURRENT_SCHEMA_VERSION
+            model_data["domain"] = self.schema.get_domains()[0]
 
             with open(save_path, "w") as file:
                 json.dump(model_data, file, indent=4)
