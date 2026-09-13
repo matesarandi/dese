@@ -28,9 +28,9 @@
     "states": {
       "status": {
         "type": "enum",
-        "values": ["idle", "busy", "blocked", "down"],
+        "values": ["idle", "busy", "blocked", "failed", "down"],
         "default": "idle",
-        "description": "Runtime operational status of the Entity during simulation: idle = no Flow Object available to process, busy = actively processing, blocked = finished processing but cannot hand off output because the next station has no capacity, down = failed and under repair. Set by the Simulation Engine, not user-configured."
+        "description": "Runtime operational status of the Entity during simulation: idle = no Flow Object available to process, busy = actively processing, blocked = finished processing but cannot hand off output because the next station has no capacity, failed = broke down unexpectedly and is being repaired, down = deliberately switched off (e.g. for planned maintenance). Set by the Simulation Engine, not user-configured."
       }
     }
   },
@@ -131,6 +131,7 @@
             "role": "main",
             "position": "center"
           },
+          "supports_failure": true,
           "properties": {
             "processing_time": {
               "type": "number",
@@ -141,15 +142,6 @@
               "type": "number",
               "unit": "piece",
               "description": "Maximum number of Flow Objects processed at once."
-            },
-            "failure_probability": {
-              "type": "number",
-              "description": "Probability that the Entity fails during a given processing cycle."
-            },
-            "mean_repair_time": {
-              "type": "number",
-              "unit": "s",
-              "description": "Average time required to repair the Entity after a failure."
             }
           }
         },
@@ -164,6 +156,7 @@
             "role": "main",
             "position": "center"
           },
+          "supports_failure": true,
           "properties": {
             "inspection_time": {
               "type": "number",
@@ -174,15 +167,6 @@
               "type": "number",
               "unit": "piece",
               "description": "Maximum number of Flow Objects inspected at once."
-            },
-            "failure_probability": {
-              "type": "number",
-              "description": "Probability that the Entity fails during a given processing cycle."
-            },
-            "mean_repair_time": {
-              "type": "number",
-              "unit": "s",
-              "description": "Average time required to repair the Entity after a failure."
             }
           }
         },
@@ -226,6 +210,7 @@
             "role": "main",
             "position": "center"
           },
+          "supports_failure": true,
           "properties": {
             "transport_time": {
               "type": "number",
@@ -236,15 +221,6 @@
               "type": "number",
               "unit": "piece",
               "description": "Maximum number of Flow Objects that can be transported at once."
-            },
-            "failure_probability": {
-              "type": "number",
-              "description": "Probability that the Entity fails during a given processing cycle."
-            },
-            "mean_repair_time": {
-              "type": "number",
-              "unit": "s",
-              "description": "Average time required to repair the Entity after a failure."
             }
           }
         },
@@ -324,6 +300,58 @@
         "Process Supply": [
           "Processing"
         ]
+      },
+
+      "rule_schemas": {
+        "Failure": {
+          "properties": {
+            "base_failure_probability": {
+              "type": "number",
+              "description": "\"Fresh\" (just maintained or repaired) per-cycle probability that the Entity fails."
+            },
+            "added_failure_probability_per_cycle": {
+              "type": "number",
+              "description": "Additional failure probability accrued for each cycle since the last maintenance or repair."
+            },
+            "mean_repair_time": {
+              "type": "number",
+              "unit": "s",
+              "description": "Average time required to repair the Entity after an unplanned failure."
+            }
+          }
+        },
+        "Maintenance": {
+          "properties": {
+            "maintenance_interval": {
+              "type": "number",
+              "unit": "cycles",
+              "description": "Number of cycles since the last maintenance or repair after which the Entity proactively enters planned maintenance."
+            },
+            "mean_maintenance_time": {
+              "type": "number",
+              "unit": "s",
+              "description": "Time required for planned maintenance."
+            }
+          }
+        },
+        "MaintenanceResource": {
+          "properties": {
+            "capacity": {
+              "type": "number",
+              "description": "Maximum number of simultaneous maintenance/repair operations across the whole model."
+            },
+            "dispatch_priority": {
+              "type": "priority_list",
+              "values": ["unplanned_first", "most_worn_first", "fifo"],
+              "labels": {
+                "unplanned_first": "Unplanned Repairs First",
+                "most_worn_first": "Most Worn First",
+                "fifo": "First Come, First Served"
+              },
+              "description": "Order in which waiting maintenance/repair requests are dispatched when the shared capacity is exhausted (top = highest priority)."
+            }
+          }
+        }
       }
     }
   ]

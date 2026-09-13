@@ -21,13 +21,48 @@ from dese.constants import (
     SPINBOX_WIDTH,
 )
 from dese.core.model import (
-    clear_routing_condition,
+    add_routing_condition,
+    clear_routing_conditions,
+    clear_routing_output_otherwise,
     find_decision_points,
+    get_failure_eligible_entity_ids,
+    get_failure_parameter,
+    get_maintenance_dispatch_priority,
+    get_maintenance_parameter,
+    get_maintenance_resource_parameter,
     get_output_relationships,
-    get_routing_condition,
+    get_routing_conditions,
+    is_routing_output_otherwise,
+    remove_routing_condition,
+    set_failure_parameter,
+    set_maintenance_dispatch_priority,
+    set_maintenance_parameter,
+    set_maintenance_resource_parameter,
     set_routing_condition,
+    set_routing_output_otherwise,
+    supports_failure,
 )
-from dese.utils import convert_property_value, generate_id, validate_number
+from dese.utils import (
+    bind_canvas_mousewheel,
+    convert_property_value,
+    generate_id,
+    validate_number,
+)
+
+# Routing condition scopes selectable in the UI, and how each maps to the
+# underlying (scope, variable) pair stored in model_data. "Entity State" is
+# deliberately narrowed to a single "Failed" value rather than the full
+# status enum — idle/busy/blocked/down don't say anything about whether the
+# Flow Object just handled here was fine, only "failed" does.
+ROUTING_SCOPES = {
+    "Flow Object State": {"scope": "flow_object", "variable": "quality"},
+    "Entity State": {"scope": "entity", "variable": "status"},
+}
+
+# Display label for the one Entity State value routing conditions can use,
+# and its underlying schema value.
+ENTITY_STATE_FAILED_LABEL = "Failed"
+ENTITY_STATE_FAILED_VALUE = "failed"
 
 
 class ModelEditorPage(ttk.Frame):
@@ -483,6 +518,8 @@ class ModelEditorPage(ttk.Frame):
 
             self.property_entries[property_name] = entry
 
+        bind_canvas_mousewheel(self.property_canvas)
+
     def update_relationship_editor(self):
         # Clear existing relationship widgets:
         for widget in self.relationship_content.winfo_children():
@@ -575,6 +612,8 @@ class ModelEditorPage(ttk.Frame):
         # Create relationships:
         self.update_relationship_inputs()
         self.update_relationship_outputs()
+
+        bind_canvas_mousewheel(self.relationship_canvas)
 
     def has_available_output(self, entity_id, relationship_id=None):
         entity = next(
@@ -1434,6 +1473,7 @@ class ModelEditorPage(ttk.Frame):
         )
         self.property_content = ttk.Frame(self.property_canvas)
         self.property_canvas.configure(yscrollcommand=self.property_scrollbar.set)
+        bind_canvas_mousewheel(self.property_canvas)
 
         # Property content:
         self.property_window = self.property_canvas.create_window(
@@ -1475,6 +1515,7 @@ class ModelEditorPage(ttk.Frame):
         self.relationship_canvas.configure(
             yscrollcommand=self.relationship_scrollbar.set
         )
+        bind_canvas_mousewheel(self.relationship_canvas)
 
         # Relationship content:
         self.relationship_window = self.relationship_canvas.create_window(
@@ -1569,6 +1610,7 @@ class ModelEditorPage(ttk.Frame):
             xscrollcommand=self.visualization_horizontal_scrollbar.set,
             yscrollcommand=self.visualization_vertical_scrollbar.set,
         )
+        bind_canvas_mousewheel(self.visualization_canvas)
 
         # Display widgets:
         self.visualization_canvas.grid(row=0, column=0, sticky="nsew")
@@ -1593,40 +1635,165 @@ class ModelEditorPage(ttk.Frame):
     # ==========================
 
     def on_tab_changed(self, event=None):
-        # The Routing frame's decision-point list can go stale if entities/
-        # relationships change on the Structure tab — refresh it whenever
-        # the user actually switches to the Rules tab, rather than hooking
-        # every entity/relationship mutation site.
+        # The Rules tab's sections can go stale if entities/relationships
+        # change on the Structure tab — refresh them whenever the user
+        # actually switches to the Rules tab, rather than hooking every
+        # entity/relationship mutation site.
         if self.notebook.select() == str(self.rules_tab):
-            self.update_routing_frame()
+            self.refresh_rules_tab()
+
+    def refresh_rules_tab(self):
+        self.update_routing_frame()
+        self.update_failure_frame()
+        self.update_maintenance_frame()
+
+        bind_canvas_mousewheel(self.rules_canvas)
 
     def create_rules_tab(self):
         # Grid:
         self.rules_tab.rowconfigure(0, weight=1)
         self.rules_tab.columnconfigure(0, weight=1)
 
+        # Scrollable content, same pattern as the Structure tab's property
+        # editor — Routing/Failure/Maintenance can together exceed the
+        # visible tab height once a model has several entities.
+        self.rules_canvas = tk.Canvas(self.rules_tab)
+        self.rules_scrollbar = ttk.Scrollbar(
+            self.rules_tab, orient="vertical", command=self.rules_canvas.yview
+        )
+        self.rules_content = ttk.Frame(self.rules_canvas)
+        self.rules_canvas.configure(yscrollcommand=self.rules_scrollbar.set)
+        bind_canvas_mousewheel(self.rules_canvas)
+
+        self.rules_window = self.rules_canvas.create_window(
+            (0, 0), window=self.rules_content, anchor="nw"
+        )
+
+        # Event binding:
+        self.rules_content.bind(
+            "<Configure>",
+            lambda event: self.rules_canvas.configure(
+                scrollregion=self.rules_canvas.bbox("all")
+            ),
+        )
+        self.rules_canvas.bind(
+            "<Configure>",
+            lambda event: self.rules_canvas.itemconfigure(
+                self.rules_window, width=event.width
+            ),
+        )
+
+        # Display widgets:
+        self.rules_canvas.grid(row=0, column=0, sticky="nsew")
+        self.rules_scrollbar.grid(row=0, column=1, sticky="ns")
+
+        # Grid (content):
+        self.rules_content.columnconfigure(0, weight=1)
+
         # Routing Frame
         # ==========================
 
         # Frame widget:
         self.routing_frame = ttk.LabelFrame(
-            self.rules_tab,
+            self.rules_content,
             text="Routing",
             style="DESE.Section.TLabelframe",
             padding=PAD,
         )
 
         # Grid:
-        # Column 3 is a trailing spacer that absorbs the extra width, so the
-        # OUTPUT/IF/combobox columns (0-2) stay packed together on the left
-        # instead of column 0 stretching and pushing the condition away.
-        self.routing_frame.columnconfigure(3, weight=1)
+        # Each decision point gets its own nested "AT ..." LabelFrame
+        # (added in update_routing_frame) — column 0 stretches so those
+        # fill the Routing frame's full width.
+        self.routing_frame.columnconfigure(0, weight=1)
 
         # Display frame widget:
         self.routing_frame.grid(row=0, column=0, sticky="new")
 
+        # Failure Frame
+        # ==========================
+        # The unplanned, stochastic side of entity breakdown — what happens
+        # to the Entity. The planned countermeasure lives in Maintenance
+        # below.
+
+        # Frame widget:
+        self.failure_frame = ttk.LabelFrame(
+            self.rules_content,
+            text="Failure",
+            style="DESE.Section.TLabelframe",
+            padding=PAD,
+        )
+
+        # Grid:
+        # Each Entity gets its own nested "AT ..." LabelFrame (added in
+        # update_failure_frame) — column 0 stretches so those fill the
+        # Failure frame's full width.
+        self.failure_frame.columnconfigure(0, weight=1)
+
+        # Display frame widget:
+        self.failure_frame.grid(row=1, column=0, sticky="new")
+
+        # Maintenance Frame
+        # ==========================
+        # The planned countermeasure side: Plan is the per-Entity timing/
+        # duration policy, Resource is the shared capacity/dispatch setup
+        # both Plan and unplanned Failure repairs compete for.
+
+        # Frame widget:
+        self.maintenance_frame = ttk.LabelFrame(
+            self.rules_content,
+            text="Maintenance",
+            style="DESE.Section.TLabelframe",
+            padding=PAD,
+        )
+
+        # Grid:
+        self.maintenance_frame.columnconfigure(0, weight=1)
+
+        # Display frame widget:
+        self.maintenance_frame.grid(row=2, column=0, sticky="new")
+
+        # Child widgets:
+        self.maintenance_plan_frame = ttk.LabelFrame(
+            self.maintenance_frame,
+            text="Plan",
+            style="DESE.Section.TLabelframe",
+            padding=PAD,
+        )
+        self.maintenance_resource_frame = ttk.LabelFrame(
+            self.maintenance_frame,
+            text="Resource",
+            style="DESE.Section.TLabelframe",
+            padding=PAD,
+        )
+
+        # Grid (child widgets):
+        # Plan gets a nested "AT ..." LabelFrame per Entity (column 0
+        # stretches for those); Resource isn't per-Entity, so it keeps its
+        # own trailing spacer column for the Capacity/Dispatch Priority rows.
+        self.maintenance_plan_frame.columnconfigure(0, weight=1)
+        self.maintenance_resource_frame.columnconfigure(3, weight=1)
+
+        # Display child widgets:
+        self.maintenance_plan_frame.grid(row=0, column=0, sticky="new")
+        self.maintenance_resource_frame.grid(row=1, column=0, sticky="new")
+
         # Content:
-        self.update_routing_frame()
+        self.refresh_rules_tab()
+
+    def get_routing_scope_value_options(self, scope_label):
+        # (display, internal) pairs for the value combobox of a given scope.
+        if scope_label == "Flow Object State":
+            quality_values = self.schema.get_flow_object_schema()["states"]["quality"][
+                "values"
+            ]
+
+            return [(value, value) for value in quality_values]
+
+        if scope_label == "Entity State":
+            return [(ENTITY_STATE_FAILED_LABEL, ENTITY_STATE_FAILED_VALUE)]
+
+        return []
 
     def update_routing_frame(self):
         # Clear existing widgets:
@@ -1643,113 +1810,855 @@ class ModelEditorPage(ttk.Frame):
             no_decision_points_label.grid(row=0, column=0, sticky="w")
             return
 
-        row = 0
+        scope_labels_by_key = {
+            (info["scope"], info["variable"]): label
+            for label, info in ROUTING_SCOPES.items()
+        }
 
         for decision_point_index, entity_id in enumerate(decision_point_ids):
-            if decision_point_index > 0:
-                # Widgets:
-                decision_point_separator = ttk.Separator(
-                    self.routing_frame, orient="horizontal"
-                )
-
-                # Display widgets:
-                decision_point_separator.grid(
-                    row=row, column=0, columnspan=4, sticky="ew"
-                )
-
-                row += 1
-
-            # Widgets:
-            at_label = ttk.Label(
-                self.routing_frame, text=f'AT "{self.get_entity_name(entity_id)}"'
+            entity = next(
+                entity for entity in self.model_data["entities"] if entity["id"] == entity_id
             )
 
+            # Only Inspection can meaningfully check both scopes at once (a
+            # Flow Object's quality is only "revealed" there) — elsewhere,
+            # offering a scope picker/+OR would just be a choice with a
+            # single real answer. Other Failure-eligible entities only ever
+            # have Entity State to check; anything else (e.g. Storage) only
+            # ever has Flow Object State.
+            if entity["type"] == "Inspection":
+                routing_mode = "full"
+            elif supports_failure(entity, self.model_data, self.schema):
+                routing_mode = "entity_state_only"
+            else:
+                routing_mode = "flow_object_state_only"
+
+            # Widgets:
+            entity_frame = ttk.LabelFrame(
+                self.routing_frame,
+                text=f'AT "{self.get_entity_name(entity_id)}"',
+                style="DESE.Section.TLabelframe",
+                padding=PAD,
+            )
+
+            # Grid:
+            # Column 5 is a trailing spacer that absorbs the extra width, so
+            # the condition columns (0-4) stay packed together on the left
+            # instead of column 0 stretching and pushing them away.
+            entity_frame.columnconfigure(5, weight=1)
+
             # Display widgets:
-            at_label.grid(row=row, column=0, sticky="w")
+            entity_frame.grid(row=decision_point_index, column=0, sticky="new")
 
-            row += 1
-
-            quality_values = self.schema.get_flow_object_schema()["states"]["quality"][
-                "values"
-            ]
             output_relationships = get_output_relationships(entity_id, self.model_data)
 
-            # Values already assigned to another output at this same decision
-            # point, keyed by target — excluded from that output's own
-            # choices below so the same condition can't be assigned twice.
-            assigned_values_by_target = {
-                relationship["target"]: condition["equals"]
-                for relationship in output_relationships
-                if (
-                    condition := get_routing_condition(
-                        self.model_data, entity_id, relationship["target"]
-                    )
-                )
-                is not None
-            }
-            used_values = set(assigned_values_by_target.values())
+            # Values already assigned anywhere at this same decision point,
+            # keyed by (scope, variable) — excluded from a condition row's
+            # own choices below (other than its current value) so the same
+            # condition can't be assigned twice.
+            used_values_by_scope_variable = {}
 
             for relationship in output_relationships:
+                for condition in get_routing_conditions(
+                    self.model_data, entity_id, relationship["target"]
+                ):
+                    key = (condition["scope"], condition["variable"])
+                    used_values_by_scope_variable.setdefault(key, set()).add(
+                        condition["equals"]
+                    )
+
+            row = 0
+
+            for output_index, relationship in enumerate(output_relationships):
                 target_id = relationship["target"]
-                current_value = assigned_values_by_target.get(target_id)
+                is_otherwise = is_routing_output_otherwise(
+                    self.model_data, entity_id, target_id
+                )
+                conditions = get_routing_conditions(self.model_data, entity_id, target_id)
+
+                if output_index > 0:
+                    # Widgets:
+                    output_separator = ttk.Separator(entity_frame, orient="horizontal")
+
+                    # Display widgets:
+                    output_separator.grid(row=row, column=0, columnspan=6, sticky="ew")
+
+                    row += 1
 
                 # Widgets:
                 output_label = ttk.Label(
-                    self.routing_frame,
+                    entity_frame,
                     text=f'OUTPUT "{self.get_entity_name(target_id)}"',
                 )
-                condition_label = ttk.Label(
-                    self.routing_frame, text="IF Flow Object State IS"
-                )
-                condition_combobox = ttk.Combobox(
-                    self.routing_frame,
-                    state="readonly",
-                    width=INPUT_WIDTH,
-                    values=[""]
-                    + [
-                        value
-                        for value in quality_values
-                        if value == current_value or value not in used_values
-                    ],
-                )
-
-                if current_value is not None:
-                    condition_combobox.set(current_value)
-
-                # Event binding:
-                condition_combobox.bind(
-                    "<<ComboboxSelected>>",
-                    lambda event, entity_id=entity_id, target_id=target_id, combobox=condition_combobox: (
-                        self.commit_routing_condition(entity_id, target_id, combobox)
+                otherwise_variable = tk.BooleanVar(value=is_otherwise)
+                otherwise_checkbutton = ttk.Checkbutton(
+                    entity_frame,
+                    text="Otherwise",
+                    variable=otherwise_variable,
+                    command=lambda entity_id=entity_id, target_id=target_id, otherwise_variable=otherwise_variable: (
+                        self.commit_routing_otherwise(entity_id, target_id, otherwise_variable)
                     ),
                 )
 
                 # Display widgets:
-                output_label.grid(row=row, column=0, sticky="w")
-                condition_label.grid(row=row, column=1, sticky="w")
-                condition_combobox.grid(row=row, column=2, sticky="w")
+                output_label.grid(row=row, column=0, columnspan=4, sticky="w")
+                otherwise_checkbutton.grid(row=row, column=4, columnspan=2, sticky="w")
 
                 row += 1
 
-    def commit_routing_condition(self, entity_id, target_id, combobox):
-        selected_value = combobox.get()
+                # "Otherwise" takes whatever the other outputs don't — no
+                # condition editor to show for it.
+                if is_otherwise:
+                    continue
 
-        if selected_value == "":
-            clear_routing_condition(self.model_data, entity_id, target_id)
+                if routing_mode != "full":
+                    # Only one scope is ever meaningful here — a fixed
+                    # label instead of a picker, a single value, no OR.
+                    fixed_scope_label = (
+                        "Entity State"
+                        if routing_mode == "entity_state_only"
+                        else "Flow Object State"
+                    )
+                    scope_info = ROUTING_SCOPES[fixed_scope_label]
+                    current_equals = conditions[0]["equals"] if conditions else ""
+                    value_options = self.get_routing_scope_value_options(fixed_scope_label)
+                    used_values = used_values_by_scope_variable.get(
+                        (scope_info["scope"], scope_info["variable"]), set()
+                    )
+
+                    # Widgets:
+                    prefix_label = ttk.Label(entity_frame, text="IF")
+                    scope_label_widget = ttk.Label(entity_frame, text=fixed_scope_label)
+                    is_label = ttk.Label(entity_frame, text="IS")
+                    value_combobox = ttk.Combobox(
+                        entity_frame,
+                        state="readonly",
+                        width=INPUT_WIDTH,
+                        values=[""]
+                        + [
+                            display
+                            for display, internal in value_options
+                            if internal == current_equals or internal not in used_values
+                        ],
+                    )
+
+                    current_value_label = next(
+                        (
+                            display
+                            for display, internal in value_options
+                            if internal == current_equals
+                        ),
+                        "",
+                    )
+
+                    if current_value_label:
+                        value_combobox.set(current_value_label)
+
+                    # Event binding:
+                    value_combobox.bind(
+                        "<<ComboboxSelected>>",
+                        lambda event, entity_id=entity_id, target_id=target_id, fixed_scope_label=fixed_scope_label, value_combobox=value_combobox: (
+                            self.commit_fixed_scope_routing_condition(
+                                entity_id, target_id, fixed_scope_label, value_combobox
+                            )
+                        ),
+                    )
+
+                    # Display widgets:
+                    prefix_label.grid(row=row, column=0, sticky="w")
+                    scope_label_widget.grid(row=row, column=1, sticky="w")
+                    is_label.grid(row=row, column=2, sticky="w")
+                    value_combobox.grid(row=row, column=3, sticky="w")
+
+                    row += 1
+
+                    continue
+
+                # An output with no conditions yet still needs one empty row
+                # so there is somewhere to pick its first condition.
+                rows_to_render = conditions if conditions else [None]
+
+                for condition_index, condition in enumerate(rows_to_render):
+                    if condition is not None:
+                        scope_label = scope_labels_by_key.get(
+                            (condition["scope"], condition["variable"]),
+                            "Flow Object State",
+                        )
+                        current_equals = condition["equals"]
+                    else:
+                        scope_label = "Flow Object State"
+                        current_equals = ""
+
+                    value_options = self.get_routing_scope_value_options(scope_label)
+                    used_values = used_values_by_scope_variable.get(
+                        (
+                            ROUTING_SCOPES[scope_label]["scope"],
+                            ROUTING_SCOPES[scope_label]["variable"],
+                        ),
+                        set(),
+                    )
+
+                    # Widgets:
+                    prefix_label = ttk.Label(
+                        entity_frame, text="IF" if condition_index == 0 else "OR"
+                    )
+                    scope_combobox = ttk.Combobox(
+                        entity_frame,
+                        state="readonly",
+                        width=INPUT_WIDTH,
+                        values=list(ROUTING_SCOPES.keys()),
+                    )
+                    scope_combobox.set(scope_label)
+                    is_label = ttk.Label(entity_frame, text="IS")
+                    value_combobox = ttk.Combobox(
+                        entity_frame,
+                        state="readonly",
+                        width=INPUT_WIDTH,
+                        values=[""]
+                        + [
+                            display
+                            for display, internal in value_options
+                            if internal == current_equals or internal not in used_values
+                        ],
+                    )
+
+                    current_value_label = next(
+                        (
+                            display
+                            for display, internal in value_options
+                            if internal == current_equals
+                        ),
+                        "",
+                    )
+
+                    if current_value_label:
+                        value_combobox.set(current_value_label)
+
+                    # Event binding:
+                    scope_combobox.bind(
+                        "<<ComboboxSelected>>",
+                        lambda event, entity_id=entity_id, target_id=target_id, condition_index=condition_index, scope_combobox=scope_combobox, value_combobox=value_combobox: (
+                            self.commit_routing_condition_row(
+                                entity_id,
+                                target_id,
+                                condition_index,
+                                scope_combobox,
+                                value_combobox,
+                                scope_changed=True,
+                            )
+                        ),
+                    )
+                    value_combobox.bind(
+                        "<<ComboboxSelected>>",
+                        lambda event, entity_id=entity_id, target_id=target_id, condition_index=condition_index, scope_combobox=scope_combobox, value_combobox=value_combobox: (
+                            self.commit_routing_condition_row(
+                                entity_id,
+                                target_id,
+                                condition_index,
+                                scope_combobox,
+                                value_combobox,
+                                scope_changed=False,
+                            )
+                        ),
+                    )
+
+                    # Display widgets:
+                    prefix_label.grid(row=row, column=0, sticky="w")
+                    scope_combobox.grid(row=row, column=1, sticky="w")
+                    is_label.grid(row=row, column=2, sticky="w")
+                    value_combobox.grid(row=row, column=3, sticky="w")
+
+                    row += 1
+
+                # Widgets:
+                # "+ OR"/"Remove" as one pinned pair (bottom-right of this
+                # output's block), not a Remove button per row — "Remove"
+                # always takes off the last condition (only OR rows are
+                # removable this way, matching the base row's own "blank it
+                # to clear everything" behaviour) and is disabled when there
+                # is nothing beyond the base condition to remove.
+                condition_button_frame = ttk.Frame(entity_frame)
+                add_or_button = ttk.Button(
+                    condition_button_frame,
+                    text="+ OR",
+                    width=BUTTON_WIDTH,
+                    command=lambda entity_id=entity_id, target_id=target_id: (
+                        self.add_routing_or_condition(entity_id, target_id)
+                    ),
+                )
+                remove_button = ttk.Button(
+                    condition_button_frame,
+                    text="Remove",
+                    width=BUTTON_WIDTH,
+                    state="normal" if len(conditions) > 1 else "disabled",
+                    command=lambda entity_id=entity_id, target_id=target_id: (
+                        self.remove_last_routing_condition(entity_id, target_id)
+                    ),
+                )
+
+                # Display widgets:
+                # Column 5 is the trailing spacer — placing the pair there
+                # with "e" sticky pins it to the output block's right edge.
+                condition_button_frame.grid(row=row, column=5, sticky="e")
+                add_or_button.grid(row=0, column=0)
+                remove_button.grid(row=0, column=1)
+
+                row += 1
+
+    def commit_routing_otherwise(self, entity_id, target_id, otherwise_variable):
+        if otherwise_variable.get():
+            set_routing_output_otherwise(self.model_data, entity_id, target_id)
         else:
-            set_routing_condition(
-                self.model_data,
-                entity_id,
-                target_id,
-                scope="flow_object",
-                variable="quality",
-                equals=selected_value,
+            clear_routing_output_otherwise(self.model_data, entity_id, target_id)
+
+        self.refresh_rules_tab()
+        self.update_model_changed_state()
+
+    def commit_fixed_scope_routing_condition(
+        self, entity_id, target_id, scope_label, value_combobox
+    ):
+        # For entities where only one scope is ever offered (see
+        # update_routing_frame) — a single condition, no OR, mirroring the
+        # original (pre-generalization) single-combobox Routing behaviour.
+        scope_info = ROUTING_SCOPES[scope_label]
+        value_options = self.get_routing_scope_value_options(scope_label)
+        selected_value = value_combobox.get()
+        equals = next(
+            (internal for display, internal in value_options if display == selected_value),
+            "",
+        )
+
+        if equals == "":
+            clear_routing_conditions(self.model_data, entity_id, target_id)
+        else:
+            existing_conditions = get_routing_conditions(self.model_data, entity_id, target_id)
+
+            if existing_conditions:
+                set_routing_condition(
+                    self.model_data,
+                    entity_id,
+                    target_id,
+                    0,
+                    scope_info["scope"],
+                    scope_info["variable"],
+                    equals,
+                )
+            else:
+                add_routing_condition(
+                    self.model_data,
+                    entity_id,
+                    target_id,
+                    scope_info["scope"],
+                    scope_info["variable"],
+                    equals,
+                )
+
+        self.refresh_rules_tab()
+        self.update_model_changed_state()
+
+    def commit_routing_condition_row(
+        self, entity_id, target_id, condition_index, scope_combobox, value_combobox, scope_changed
+    ):
+        scope_label = scope_combobox.get()
+        scope_info = ROUTING_SCOPES[scope_label]
+
+        # The old value likely isn't valid for the new scope's value list —
+        # reset it and let the user pick again, rather than committing a
+        # mismatched (scope, equals) pair.
+        selected_value = "" if scope_changed else value_combobox.get()
+
+        value_options = self.get_routing_scope_value_options(scope_label)
+        equals = next(
+            (internal for display, internal in value_options if display == selected_value),
+            "",
+        )
+
+        # Blanking the first (IF) condition's value clears the whole output
+        # — the OR rows on top of it only make sense once it has a base
+        # condition. Changing its scope, though, keeps it (with equals still
+        # blank) so the scope choice doesn't visually revert on re-render.
+        if condition_index == 0 and equals == "" and not scope_changed:
+            clear_routing_conditions(self.model_data, entity_id, target_id)
+        else:
+            existing_conditions = get_routing_conditions(self.model_data, entity_id, target_id)
+
+            if condition_index < len(existing_conditions):
+                set_routing_condition(
+                    self.model_data,
+                    entity_id,
+                    target_id,
+                    condition_index,
+                    scope_info["scope"],
+                    scope_info["variable"],
+                    equals,
+                )
+            else:
+                add_routing_condition(
+                    self.model_data,
+                    entity_id,
+                    target_id,
+                    scope_info["scope"],
+                    scope_info["variable"],
+                    equals,
+                )
+
+        # Re-render (and re-bind scrolling on the fresh widgets — this
+        # rebuilds the frame, so a plain update_routing_frame() would leave
+        # the new widgets without a mousewheel binding until the next tab
+        # switch) so the other conditions/outputs at this decision point
+        # immediately reflect the value that was just assigned or cleared.
+        self.refresh_rules_tab()
+        self.update_model_changed_state()
+
+    def add_routing_or_condition(self, entity_id, target_id):
+        # Default the new row to the first still-available Flow Object
+        # State value, so it starts out meaningful rather than blank.
+        used_values = set()
+
+        for relationship in get_output_relationships(entity_id, self.model_data):
+            for condition in get_routing_conditions(
+                self.model_data, entity_id, relationship["target"]
+            ):
+                if condition["scope"] == "flow_object" and condition["variable"] == "quality":
+                    used_values.add(condition["equals"])
+
+        quality_values = self.schema.get_flow_object_schema()["states"]["quality"][
+            "values"
+        ]
+        default_value = next(
+            (value for value in quality_values if value not in used_values), ""
+        )
+
+        add_routing_condition(
+            self.model_data, entity_id, target_id, "flow_object", "quality", default_value
+        )
+
+        self.refresh_rules_tab()
+        self.update_model_changed_state()
+
+    def remove_last_routing_condition(self, entity_id, target_id):
+        conditions = get_routing_conditions(self.model_data, entity_id, target_id)
+
+        # The base (first) condition isn't removable this way — clearing it
+        # is done by blanking its value instead. The button is disabled
+        # whenever there is nothing beyond it, but guard here too.
+        if len(conditions) <= 1:
+            return
+
+        remove_routing_condition(self.model_data, entity_id, target_id, len(conditions) - 1)
+
+        self.refresh_rules_tab()
+        self.update_model_changed_state()
+
+    def update_failure_frame(self):
+        # Clear existing widgets:
+        for widget in self.failure_frame.winfo_children():
+            widget.destroy()
+
+        entity_ids = get_failure_eligible_entity_ids(self.model_data, self.schema)
+
+        if not entity_ids:
+            no_entities_label = ttk.Label(
+                self.failure_frame,
+                text="No entities that support failure in this model yet.",
+            )
+            no_entities_label.grid(row=0, column=0, sticky="w")
+            return
+
+        rule_schema = self.schema.get_rule_schema(self.model_data["domain"], "Failure")
+        fields = rule_schema["properties"] if rule_schema else {}
+
+        # A fixed column 0 width (the longest field label here) keeps the
+        # entry/unit columns justified at the same x position on every row,
+        # regardless of which field's label is currently showing.
+        default_font = tkfont.nametofont("TkDefaultFont")
+        label_column_width = self.measure_column_width(
+            [name.replace("_", " ").title() for name in fields], default_font
+        )
+
+        for entity_index, entity_id in enumerate(entity_ids):
+            # Widgets:
+            entity_frame = ttk.LabelFrame(
+                self.failure_frame,
+                text=f'AT "{self.get_entity_name(entity_id)}"',
+                style="DESE.Section.TLabelframe",
+                padding=PAD,
             )
 
-        # Re-render so the other outputs at this decision point immediately
-        # reflect the value that was just assigned or cleared here.
-        self.update_routing_frame()
+            # Grid:
+            entity_frame.columnconfigure(0, minsize=label_column_width)
+            entity_frame.columnconfigure(3, weight=1)
+
+            # Display widgets:
+            entity_frame.grid(row=entity_index, column=0, sticky="new")
+
+            row = 0
+
+            for field_index, (field_name, field_schema) in enumerate(fields.items()):
+                if field_index > 0:
+                    # Widgets:
+                    field_separator = ttk.Separator(entity_frame, orient="horizontal")
+
+                    # Display widgets:
+                    field_separator.grid(row=row, column=0, columnspan=4, sticky="ew")
+
+                    row += 1
+
+                # Widgets:
+                validate_command = (self.register(validate_number), "%P")
+
+                description_label = ttk.Label(
+                    entity_frame, text=field_schema["description"]
+                )
+                field_label_widget = ttk.Label(
+                    entity_frame, text=field_name.replace("_", " ").title()
+                )
+                field_entry = ttk.Entry(
+                    entity_frame,
+                    width=INPUT_WIDTH,
+                    validate="key",
+                    validatecommand=validate_command,
+                )
+                field_unit_label = ttk.Label(
+                    entity_frame, text=field_schema.get("unit", "")
+                )
+
+                value = get_failure_parameter(self.model_data, entity_id, field_name)
+
+                if value is not None:
+                    field_entry.insert(0, str(value))
+
+                # Event binding:
+                field_entry.bind(
+                    "<FocusOut>",
+                    lambda event, entity_id=entity_id, field_name=field_name, entry=field_entry: (
+                        self.commit_failure_parameter(entity_id, field_name, entry)
+                    ),
+                )
+                field_entry.bind(
+                    "<Return>",
+                    lambda event, entity_id=entity_id, field_name=field_name, entry=field_entry: (
+                        self.commit_failure_parameter(entity_id, field_name, entry)
+                    ),
+                )
+
+                # Display widgets:
+                description_label.grid(row=row, column=0, columnspan=4, sticky="w")
+                row += 1
+                field_label_widget.grid(row=row, column=0, sticky="w")
+                field_entry.grid(row=row, column=1, sticky="w")
+                field_unit_label.grid(row=row, column=2, sticky="w")
+
+                row += 1
+
+    def commit_failure_parameter(self, entity_id, field_name, entry):
+        new_value = convert_property_value(entry.get(), NUMBER_PROPERTY_TYPE)
+
+        if get_failure_parameter(self.model_data, entity_id, field_name) != new_value:
+            set_failure_parameter(self.model_data, entity_id, field_name, new_value)
+            self.update_model_changed_state()
+
+        entry.delete(0, "end")
+        entry.insert(
+            0, str(get_failure_parameter(self.model_data, entity_id, field_name) or "")
+        )
+
+    def update_maintenance_frame(self):
+        self.update_maintenance_plan_frame()
+        self.update_maintenance_resource_frame()
+
+    def update_maintenance_plan_frame(self):
+        # Clear existing widgets:
+        for widget in self.maintenance_plan_frame.winfo_children():
+            widget.destroy()
+
+        entity_ids = get_failure_eligible_entity_ids(self.model_data, self.schema)
+
+        if not entity_ids:
+            no_entities_label = ttk.Label(
+                self.maintenance_plan_frame,
+                text="No entities that support failure in this model yet.",
+            )
+            no_entities_label.grid(row=0, column=0, sticky="w")
+            return
+
+        rule_schema = self.schema.get_rule_schema(self.model_data["domain"], "Maintenance")
+        fields = rule_schema["properties"] if rule_schema else {}
+
+        default_font = tkfont.nametofont("TkDefaultFont")
+        label_column_width = self.measure_column_width(
+            [name.replace("_", " ").title() for name in fields], default_font
+        )
+
+        for entity_index, entity_id in enumerate(entity_ids):
+            # Widgets:
+            entity_frame = ttk.LabelFrame(
+                self.maintenance_plan_frame,
+                text=f'AT "{self.get_entity_name(entity_id)}"',
+                style="DESE.Section.TLabelframe",
+                padding=PAD,
+            )
+
+            # Grid:
+            entity_frame.columnconfigure(0, minsize=label_column_width)
+            entity_frame.columnconfigure(3, weight=1)
+
+            # Display widgets:
+            entity_frame.grid(row=entity_index, column=0, sticky="new")
+
+            row = 0
+
+            for field_index, (field_name, field_schema) in enumerate(fields.items()):
+                if field_index > 0:
+                    # Widgets:
+                    field_separator = ttk.Separator(entity_frame, orient="horizontal")
+
+                    # Display widgets:
+                    field_separator.grid(row=row, column=0, columnspan=4, sticky="ew")
+
+                    row += 1
+
+                # Widgets:
+                validate_command = (self.register(validate_number), "%P")
+
+                description_label = ttk.Label(
+                    entity_frame, text=field_schema["description"]
+                )
+                field_label_widget = ttk.Label(
+                    entity_frame, text=field_name.replace("_", " ").title()
+                )
+                field_entry = ttk.Entry(
+                    entity_frame,
+                    width=INPUT_WIDTH,
+                    validate="key",
+                    validatecommand=validate_command,
+                )
+                field_unit_label = ttk.Label(
+                    entity_frame, text=field_schema.get("unit", "")
+                )
+
+                value = get_maintenance_parameter(self.model_data, entity_id, field_name)
+
+                if value is not None:
+                    field_entry.insert(0, str(value))
+
+                # Event binding:
+                field_entry.bind(
+                    "<FocusOut>",
+                    lambda event, entity_id=entity_id, field_name=field_name, entry=field_entry: (
+                        self.commit_maintenance_parameter(entity_id, field_name, entry)
+                    ),
+                )
+                field_entry.bind(
+                    "<Return>",
+                    lambda event, entity_id=entity_id, field_name=field_name, entry=field_entry: (
+                        self.commit_maintenance_parameter(entity_id, field_name, entry)
+                    ),
+                )
+
+                # Display widgets:
+                description_label.grid(row=row, column=0, columnspan=4, sticky="w")
+                row += 1
+                field_label_widget.grid(row=row, column=0, sticky="w")
+                field_entry.grid(row=row, column=1, sticky="w")
+                field_unit_label.grid(row=row, column=2, sticky="w")
+
+                row += 1
+
+    def commit_maintenance_parameter(self, entity_id, field_name, entry):
+        new_value = convert_property_value(entry.get(), NUMBER_PROPERTY_TYPE)
+
+        if get_maintenance_parameter(self.model_data, entity_id, field_name) != new_value:
+            set_maintenance_parameter(self.model_data, entity_id, field_name, new_value)
+            self.update_model_changed_state()
+
+        entry.delete(0, "end")
+        entry.insert(
+            0,
+            str(get_maintenance_parameter(self.model_data, entity_id, field_name) or ""),
+        )
+
+    def update_maintenance_resource_frame(self):
+        # Clear existing widgets:
+        for widget in self.maintenance_resource_frame.winfo_children():
+            widget.destroy()
+
+        entity_ids = get_failure_eligible_entity_ids(self.model_data, self.schema)
+
+        if not entity_ids:
+            no_entities_label = ttk.Label(
+                self.maintenance_resource_frame,
+                text="No entities that support failure in this model yet.",
+            )
+            no_entities_label.grid(row=0, column=0, sticky="w")
+            return
+
+        rule_schema = self.schema.get_rule_schema(
+            self.model_data["domain"], "MaintenanceResource"
+        )
+        fields = rule_schema["properties"] if rule_schema else {}
+
+        # Grid:
+        default_font = tkfont.nametofont("TkDefaultFont")
+        self.maintenance_resource_frame.columnconfigure(
+            0,
+            minsize=self.measure_column_width(
+                [name.replace("_", " ").title() for name in fields], default_font
+            ),
+        )
+
+        row = 0
+
+        for field_index, (field_name, field_schema) in enumerate(fields.items()):
+            if field_index > 0:
+                # Widgets:
+                field_separator = ttk.Separator(
+                    self.maintenance_resource_frame, orient="horizontal"
+                )
+
+                # Display widgets:
+                field_separator.grid(row=row, column=0, columnspan=4, sticky="ew")
+
+                row += 1
+
+            # Widgets:
+            description_label = ttk.Label(
+                self.maintenance_resource_frame, text=field_schema["description"]
+            )
+
+            # Display widgets:
+            description_label.grid(row=row, column=0, columnspan=4, sticky="w")
+
+            row += 1
+
+            if field_schema["type"] == "priority_list":
+                # Widgets:
+                priority_label = ttk.Label(
+                    self.maintenance_resource_frame,
+                    text=field_name.replace("_", " ").title(),
+                )
+                self.dispatch_priority_listbox = tk.Listbox(
+                    self.maintenance_resource_frame,
+                    height=len(field_schema["values"]),
+                    exportselection=False,
+                )
+
+                labels = field_schema["labels"]
+
+                for criterion in get_maintenance_dispatch_priority(
+                    self.model_data, self.schema
+                ):
+                    self.dispatch_priority_listbox.insert(tk.END, labels[criterion])
+
+                self.dispatch_priority_listbox.selection_set(0)
+
+                # Same style as the Structure tab's entity table Move up/down
+                # buttons — text label, BUTTON_WIDTH, side by side.
+                move_button_frame = ttk.Frame(self.maintenance_resource_frame)
+                move_up_button = ttk.Button(
+                    move_button_frame,
+                    text="Move up ↑",
+                    width=BUTTON_WIDTH,
+                    command=lambda: self.move_dispatch_priority(-1),
+                )
+                move_down_button = ttk.Button(
+                    move_button_frame,
+                    text="Move down ↓",
+                    width=BUTTON_WIDTH,
+                    command=lambda: self.move_dispatch_priority(1),
+                )
+
+                # Display widgets:
+                priority_label.grid(row=row, column=0, sticky="nw")
+                self.dispatch_priority_listbox.grid(row=row, column=1, sticky="w")
+                # Column 3 is the trailing spacer — placing the buttons there
+                # with "se" sticky pins them to the Resource frame's bottom-
+                # right corner instead of floating mid-row next to the list.
+                move_button_frame.grid(row=row, column=3, sticky="se")
+                move_up_button.grid(row=0, column=0)
+                move_down_button.grid(row=0, column=1)
+            else:
+                # Widgets:
+                validate_command = (self.register(validate_number), "%P")
+
+                field_label_widget = ttk.Label(
+                    self.maintenance_resource_frame,
+                    text=field_name.replace("_", " ").title(),
+                )
+                field_entry = ttk.Entry(
+                    self.maintenance_resource_frame,
+                    width=INPUT_WIDTH,
+                    validate="key",
+                    validatecommand=validate_command,
+                )
+                field_unit_label = ttk.Label(
+                    self.maintenance_resource_frame, text=field_schema.get("unit", "")
+                )
+
+                value = get_maintenance_resource_parameter(self.model_data, field_name)
+
+                if value is not None:
+                    field_entry.insert(0, str(value))
+
+                # Event binding:
+                field_entry.bind(
+                    "<FocusOut>",
+                    lambda event, field_name=field_name, entry=field_entry: (
+                        self.commit_maintenance_resource_parameter(field_name, entry)
+                    ),
+                )
+                field_entry.bind(
+                    "<Return>",
+                    lambda event, field_name=field_name, entry=field_entry: (
+                        self.commit_maintenance_resource_parameter(field_name, entry)
+                    ),
+                )
+
+                # Display widgets:
+                field_label_widget.grid(row=row, column=0, sticky="w")
+                field_entry.grid(row=row, column=1, sticky="w")
+                field_unit_label.grid(row=row, column=2, sticky="w")
+
+            row += 1
+
+    def commit_maintenance_resource_parameter(self, field_name, entry):
+        new_value = convert_property_value(entry.get(), NUMBER_PROPERTY_TYPE)
+
+        if get_maintenance_resource_parameter(self.model_data, field_name) != new_value:
+            set_maintenance_resource_parameter(self.model_data, field_name, new_value)
+            self.update_model_changed_state()
+
+        entry.delete(0, "end")
+        entry.insert(
+            0, str(get_maintenance_resource_parameter(self.model_data, field_name) or "")
+        )
+
+    def move_dispatch_priority(self, direction):
+        selection = self.dispatch_priority_listbox.curselection()
+
+        if not selection:
+            return
+
+        index = selection[0]
+        new_index = index + direction
+
+        if new_index < 0 or new_index >= self.dispatch_priority_listbox.size():
+            return
+
+        dispatch_priority = get_maintenance_dispatch_priority(self.model_data, self.schema)
+        dispatch_priority[index], dispatch_priority[new_index] = (
+            dispatch_priority[new_index],
+            dispatch_priority[index],
+        )
+
+        set_maintenance_dispatch_priority(self.model_data, dispatch_priority)
         self.update_model_changed_state()
+
+        # refresh_rules_tab (not just update_maintenance_resource_frame) so
+        # the freshly rebuilt widgets get their mousewheel binding back too.
+        self.refresh_rules_tab()
+
+        self.dispatch_priority_listbox.selection_set(new_index)
 
     # ==========================
     # Model Editor Page

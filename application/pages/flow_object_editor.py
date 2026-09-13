@@ -10,7 +10,7 @@ from dese.constants import (
     NUMBER_PROPERTY_TYPE,
     PAD,
 )
-from dese.utils import convert_property_value, validate_number
+from dese.utils import bind_canvas_mousewheel, convert_property_value, validate_number
 
 
 class FlowObjectEditor:
@@ -522,6 +522,8 @@ class FlowObjectEditor:
 
                         process_requirements_row += 1
 
+        bind_canvas_mousewheel(self.right_canvas)
+
     def load_flow_objects(self):
         self.flow_object_listbox.delete(0, tk.END)
 
@@ -606,6 +608,7 @@ class FlowObjectEditor:
 
         # Configure canvas:
         self.right_canvas.configure(yscrollcommand=self.right_scrollbar.set)
+        bind_canvas_mousewheel(self.right_canvas)
 
         # Grid:
         self.right_frame.rowconfigure(0, weight=1)

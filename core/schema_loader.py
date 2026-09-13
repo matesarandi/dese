@@ -63,6 +63,14 @@ class SchemaLoader:
     def get_flow_object_schema(self):
         return self.schema_data["base_flow_object_schema"]
 
+    def get_rule_schema(self, domain_name, rule_type):
+        domain = self.get_domain(domain_name)
+
+        if domain is None:
+            return None
+
+        return domain.get("rule_schemas", {}).get(rule_type)
+
     def get_relationship_allowances(self, domain_name):
         domain = self.get_domain(domain_name)
 
