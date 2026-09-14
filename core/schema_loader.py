@@ -60,6 +60,9 @@ class SchemaLoader:
 
         return None
 
+    def get_base_entity_schema(self):
+        return self.schema_data["base_entity_schema"]
+
     def get_flow_object_schema(self):
         return self.schema_data["base_flow_object_schema"]
 

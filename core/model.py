@@ -114,8 +114,6 @@ def add_routing_condition(model_data, entity_id, target_id, scope, variable, equ
     if output is None:
         rule["outputs"].append({"target": target_id, "conditions": [condition]})
     else:
-        # An output can't be "otherwise" and condition-based at once.
-        output.pop("otherwise", None)
         output.setdefault("conditions", []).append(condition)
 
 
@@ -157,99 +155,111 @@ def remove_routing_condition(model_data, entity_id, target_id, index):
 
     # Drop the output once it has no conditions left, and the rule entirely
     # once none of its outputs have any, instead of leaving empty, orphaned
-    # entries in model_data["rules"]. Not if it's "otherwise", though — that
-    # legitimately has no conditions.
-    if not conditions and not output.get("otherwise"):
+    # entries in model_data["rules"].
+    if not conditions:
         rule["outputs"].remove(output)
 
     if not rule["outputs"]:
         model_data["rules"].remove(rule)
 
 
-def clear_routing_conditions(model_data, entity_id, target_id):
-    rule = find_routing_rule(model_data, entity_id)
+def move_routing_rule_output(model_data, old_entity_id, old_target_id, new_entity_id, new_target_id):
+    # Retargeting a relationship (either end) must not strand the Routing
+    # conditions configured for it — move the output (and its conditions)
+    # from (old_entity_id -> old_target_id) to (new_entity_id ->
+    # new_target_id) instead. A no-op if there's nothing configured there,
+    # or if the destination already has its own output (never clobber
+    # existing configuration).
+    old_rule = find_routing_rule(model_data, old_entity_id)
 
-    if rule is None:
+    if old_rule is None:
         return
 
-    rule["outputs"] = [
-        output for output in rule["outputs"] if output["target"] != target_id
-    ]
-
-    if not rule["outputs"]:
-        model_data["rules"].remove(rule)
-
-
-def is_routing_output_otherwise(model_data, entity_id, target_id):
-    rule = find_routing_rule(model_data, entity_id)
-
-    if rule is None:
-        return False
-
-    output = next(
-        (output for output in rule["outputs"] if output["target"] == target_id),
+    old_output = next(
+        (output for output in old_rule["outputs"] if output["target"] == old_target_id),
         None,
     )
 
-    if output is None:
-        return False
-
-    return output.get("otherwise", False)
-
-
-def set_routing_output_otherwise(model_data, entity_id, target_id):
-    # Only one output per decision point may be "otherwise" — unmark any
-    # other output at this same entity that currently has it.
-    rule = find_routing_rule(model_data, entity_id)
-
-    if rule is None:
-        rule = {"type": "Routing", "at": entity_id, "outputs": []}
-        model_data["rules"].append(rule)
-
-    # Unmark and, if that leaves it empty, drop any other output that
-    # currently has "otherwise" — instead of leaving a dangling, empty entry.
-    for output in list(rule["outputs"]):
-        if output["target"] != target_id:
-            output.pop("otherwise", None)
-
-            if not output.get("conditions"):
-                rule["outputs"].remove(output)
-
-    output = next(
-        (output for output in rule["outputs"] if output["target"] == target_id),
-        None,
-    )
-
-    if output is None:
-        output = {"target": target_id}
-        rule["outputs"].append(output)
-
-    # An output can't be "otherwise" and condition-based at once.
-    output.pop("conditions", None)
-    output["otherwise"] = True
-
-
-def clear_routing_output_otherwise(model_data, entity_id, target_id):
-    rule = find_routing_rule(model_data, entity_id)
-
-    if rule is None:
+    if old_output is None:
         return
 
-    output = next(
-        (output for output in rule["outputs"] if output["target"] == target_id),
-        None,
+    # Same entity on both ends (an output-side retarget) means old_rule and
+    # new_rule are the same object — look it up once to avoid operating on
+    # a stale copy after it's removed from model_data["rules"] below.
+    new_rule = old_rule if new_entity_id == old_entity_id else find_routing_rule(
+        model_data, new_entity_id
     )
 
-    if output is None:
+    if new_rule is not None and any(
+        output["target"] == new_target_id for output in new_rule["outputs"]
+    ):
         return
 
-    output.pop("otherwise", None)
+    old_rule["outputs"].remove(old_output)
+    old_output["target"] = new_target_id
 
-    if not output.get("conditions"):
-        rule["outputs"].remove(output)
+    if new_rule is None:
+        new_rule = {"type": "Routing", "at": new_entity_id, "outputs": []}
+        model_data["rules"].append(new_rule)
 
-    if not rule["outputs"]:
-        model_data["rules"].remove(rule)
+    new_rule["outputs"].append(old_output)
+
+    if not old_rule["outputs"] and old_rule is not new_rule:
+        model_data["rules"].remove(old_rule)
+
+
+def remove_entity_from_rules(model_data, entity_id):
+    # Deleting an Entity shouldn't leave Rule data referencing an ID that no
+    # longer exists — an orphaned Routing rule could otherwise resurface
+    # later (e.g. if a decision point regains a second output) with
+    # conditions the user never meant to keep.
+    remaining_rules = []
+
+    for rule in model_data["rules"]:
+        if rule.get("at") == entity_id:
+            continue
+
+        if rule.get("type") == "Routing":
+            rule["outputs"] = [
+                output for output in rule["outputs"] if output["target"] != entity_id
+            ]
+
+            if not rule["outputs"]:
+                continue
+
+        remaining_rules.append(rule)
+
+    model_data["rules"] = remaining_rules
+
+
+def get_routing_scope_candidates(schema):
+    # (scope, variable) pairs for every state declared anywhere in the base
+    # schema. A Routing condition can check any Entity or Flow Object state
+    # that exists — nothing is excluded, and a new state added to either
+    # states block (now or in the future, for any Entity type) becomes a
+    # selectable condition automatically, with no code change here.
+    candidates = []
+
+    for variable in schema.get_base_entity_schema()["states"]:
+        candidates.append(("entity", variable))
+
+    for variable in schema.get_flow_object_schema()["states"]:
+        candidates.append(("flow_object", variable))
+
+    return candidates
+
+
+def get_routing_scope_label(scope, variable):
+    prefix = "Entity" if scope == "entity" else "Flow Object"
+
+    return f"{prefix} {variable.replace('_', ' ').title()}"
+
+
+def get_routing_scope_values(scope, variable, schema):
+    if scope == "entity":
+        return schema.get_base_entity_schema()["states"][variable]["values"]
+
+    return schema.get_flow_object_schema()["states"][variable]["values"]
 
 
 def supports_failure(entity, model_data, schema):

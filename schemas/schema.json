@@ -30,7 +30,7 @@
         "type": "enum",
         "values": ["idle", "busy", "blocked", "failed", "down"],
         "default": "idle",
-        "description": "Runtime operational status of the Entity during simulation: idle = no Flow Object available to process, busy = actively processing, blocked = finished processing but cannot hand off output because the next station has no capacity, failed = broke down unexpectedly and is being repaired, down = deliberately switched off (e.g. for planned maintenance). Set by the Simulation Engine, not user-configured."
+        "description": "Runtime status of the Entity, set by the Simulation Engine."
       }
     }
   },
@@ -67,7 +67,7 @@
       "type": "enum",
       "values": ["good", "scrap"],
       "default": "good",
-      "description": "Runtime quality outcome of the Flow Object: good = passed processing without issue, scrap = ruined during processing (e.g. by an Entity failure) and routed out of the main process. Set by the Simulation Engine, not user-configured."
+      "description": "Quality outcome of the Flow Object, set by the Simulation Engine."
     }
   },
 

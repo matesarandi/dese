@@ -22,8 +22,6 @@ from dese.constants import (
 )
 from dese.core.model import (
     add_routing_condition,
-    clear_routing_conditions,
-    clear_routing_output_otherwise,
     find_decision_points,
     get_failure_eligible_entity_ids,
     get_failure_parameter,
@@ -32,15 +30,17 @@ from dese.core.model import (
     get_maintenance_resource_parameter,
     get_output_relationships,
     get_routing_conditions,
-    is_routing_output_otherwise,
+    get_routing_scope_candidates,
+    get_routing_scope_label,
+    get_routing_scope_values,
+    move_routing_rule_output,
+    remove_entity_from_rules,
     remove_routing_condition,
     set_failure_parameter,
     set_maintenance_dispatch_priority,
     set_maintenance_parameter,
     set_maintenance_resource_parameter,
     set_routing_condition,
-    set_routing_output_otherwise,
-    supports_failure,
 )
 from dese.utils import (
     bind_canvas_mousewheel,
@@ -48,21 +48,6 @@ from dese.utils import (
     generate_id,
     validate_number,
 )
-
-# Routing condition scopes selectable in the UI, and how each maps to the
-# underlying (scope, variable) pair stored in model_data. "Entity State" is
-# deliberately narrowed to a single "Failed" value rather than the full
-# status enum — idle/busy/blocked/down don't say anything about whether the
-# Flow Object just handled here was fine, only "failed" does.
-ROUTING_SCOPES = {
-    "Flow Object State": {"scope": "flow_object", "variable": "quality"},
-    "Entity State": {"scope": "entity", "variable": "status"},
-}
-
-# Display label for the one Entity State value routing conditions can use,
-# and its underlying schema value.
-ENTITY_STATE_FAILED_LABEL = "Failed"
-ENTITY_STATE_FAILED_VALUE = "failed"
 
 
 class ModelEditorPage(ttk.Frame):
@@ -400,6 +385,12 @@ class ModelEditorPage(ttk.Frame):
                 and relationship["target"] != entity_id
             )
         ]
+
+        # Delete rules referencing the entity (as "at" or as a Routing
+        # output target) — otherwise they'd linger as dead data, or
+        # resurface unexpectedly (e.g. a Routing rule reappearing if a
+        # decision point regains a second output later).
+        remove_entity_from_rules(self.model_data, entity_id)
 
         # Refresh entity table:
         self.refresh_entity_table()
@@ -1222,7 +1213,27 @@ class ModelEditorPage(ttk.Frame):
                     if relationship["id"] == relationship_id
                 )
 
+                old_source_id = relationship["source"]
                 relationship["source"] = entity_id
+
+                # If the old source no longer reaches this Entity at all,
+                # its Routing conditions for this target should follow
+                # onto the new source rather than being stranded on a
+                # connection that's gone.
+                old_source_still_connected = any(
+                    other["source"] == old_source_id
+                    and other["target"] == selected_entity_id
+                    for other in self.model_data["relationships"]
+                )
+
+                if not old_source_still_connected:
+                    move_routing_rule_output(
+                        self.model_data,
+                        old_source_id,
+                        selected_entity_id,
+                        entity_id,
+                        selected_entity_id,
+                    )
 
         elif event.widget in self.output_comboboxes:
             index = self.output_comboboxes.index(event.widget)
@@ -1264,7 +1275,27 @@ class ModelEditorPage(ttk.Frame):
                     if relationship["id"] == relationship_id
                 )
 
+                old_target_id = relationship["target"]
                 relationship["target"] = entity_id
+
+                # If this decision point no longer reaches the old target
+                # at all, its Routing conditions for that output should
+                # follow onto the new target rather than being stranded on
+                # a connection that's gone.
+                old_target_still_connected = any(
+                    other["source"] == selected_entity_id
+                    and other["target"] == old_target_id
+                    for other in self.model_data["relationships"]
+                )
+
+                if not old_target_still_connected:
+                    move_routing_rule_output(
+                        self.model_data,
+                        selected_entity_id,
+                        old_target_id,
+                        selected_entity_id,
+                        entity_id,
+                    )
 
         else:
             return
@@ -1643,11 +1674,22 @@ class ModelEditorPage(ttk.Frame):
             self.refresh_rules_tab()
 
     def refresh_rules_tab(self):
+        # Rebuilding destroys and recreates every widget below, which
+        # briefly collapses the scrollable content to near-zero height —
+        # the canvas clamps its scroll position to the top for that instant
+        # and doesn't return on its own once the content regrows. Save and
+        # restore it around the rebuild so a mid-scroll selection doesn't
+        # visibly jump the page back to the top.
+        scroll_position = self.rules_canvas.yview()[0]
+
         self.update_routing_frame()
         self.update_failure_frame()
         self.update_maintenance_frame()
 
         bind_canvas_mousewheel(self.rules_canvas)
+
+        self.rules_canvas.update_idletasks()
+        self.rules_canvas.yview_moveto(scroll_position)
 
     def create_rules_tab(self):
         # Grid:
@@ -1781,20 +1823,6 @@ class ModelEditorPage(ttk.Frame):
         # Content:
         self.refresh_rules_tab()
 
-    def get_routing_scope_value_options(self, scope_label):
-        # (display, internal) pairs for the value combobox of a given scope.
-        if scope_label == "Flow Object State":
-            quality_values = self.schema.get_flow_object_schema()["states"]["quality"][
-                "values"
-            ]
-
-            return [(value, value) for value in quality_values]
-
-        if scope_label == "Entity State":
-            return [(ENTITY_STATE_FAILED_LABEL, ENTITY_STATE_FAILED_VALUE)]
-
-        return []
-
     def update_routing_frame(self):
         # Clear existing widgets:
         for widget in self.routing_frame.winfo_children():
@@ -1810,29 +1838,15 @@ class ModelEditorPage(ttk.Frame):
             no_decision_points_label.grid(row=0, column=0, sticky="w")
             return
 
-        scope_labels_by_key = {
-            (info["scope"], info["variable"]): label
-            for label, info in ROUTING_SCOPES.items()
-        }
+        # Every state declared anywhere in the base schema is a selectable
+        # Routing condition scope — the same set everywhere, no per-Entity
+        # restriction (see project_product_vision memory for why).
+        scope_candidates = get_routing_scope_candidates(self.schema)
+        scope_labels = [
+            get_routing_scope_label(scope, variable) for scope, variable in scope_candidates
+        ]
 
         for decision_point_index, entity_id in enumerate(decision_point_ids):
-            entity = next(
-                entity for entity in self.model_data["entities"] if entity["id"] == entity_id
-            )
-
-            # Only Inspection can meaningfully check both scopes at once (a
-            # Flow Object's quality is only "revealed" there) — elsewhere,
-            # offering a scope picker/+OR would just be a choice with a
-            # single real answer. Other Failure-eligible entities only ever
-            # have Entity State to check; anything else (e.g. Storage) only
-            # ever has Flow Object State.
-            if entity["type"] == "Inspection":
-                routing_mode = "full"
-            elif supports_failure(entity, self.model_data, self.schema):
-                routing_mode = "entity_state_only"
-            else:
-                routing_mode = "flow_object_state_only"
-
             # Widgets:
             entity_frame = ttk.LabelFrame(
                 self.routing_frame,
@@ -1850,30 +1864,31 @@ class ModelEditorPage(ttk.Frame):
             # Display widgets:
             entity_frame.grid(row=decision_point_index, column=0, sticky="new")
 
+            row = 0
+
             output_relationships = get_output_relationships(entity_id, self.model_data)
 
-            # Values already assigned anywhere at this same decision point,
-            # keyed by (scope, variable) — excluded from a condition row's
-            # own choices below (other than its current value) so the same
-            # condition can't be assigned twice.
-            used_values_by_scope_variable = {}
+            # Every (scope, variable, equals) triple already assigned
+            # anywhere at this decision point — excluded from a condition
+            # row's own choices below (other than its own current
+            # selection), and used to bound how many OR rows are possible.
+            used_conditions = set()
 
             for relationship in output_relationships:
                 for condition in get_routing_conditions(
                     self.model_data, entity_id, relationship["target"]
                 ):
-                    key = (condition["scope"], condition["variable"])
-                    used_values_by_scope_variable.setdefault(key, set()).add(
-                        condition["equals"]
+                    used_conditions.add(
+                        (condition["scope"], condition["variable"], condition["equals"])
                     )
 
-            row = 0
+            total_possible_conditions = sum(
+                len(get_routing_scope_values(scope, variable, self.schema))
+                for scope, variable in scope_candidates
+            )
 
             for output_index, relationship in enumerate(output_relationships):
                 target_id = relationship["target"]
-                is_otherwise = is_routing_output_otherwise(
-                    self.model_data, entity_id, target_id
-                )
                 conditions = get_routing_conditions(self.model_data, entity_id, target_id)
 
                 if output_index > 0:
@@ -1890,123 +1905,51 @@ class ModelEditorPage(ttk.Frame):
                     entity_frame,
                     text=f'OUTPUT "{self.get_entity_name(target_id)}"',
                 )
-                otherwise_variable = tk.BooleanVar(value=is_otherwise)
-                otherwise_checkbutton = ttk.Checkbutton(
-                    entity_frame,
-                    text="Otherwise",
-                    variable=otherwise_variable,
-                    command=lambda entity_id=entity_id, target_id=target_id, otherwise_variable=otherwise_variable: (
-                        self.commit_routing_otherwise(entity_id, target_id, otherwise_variable)
-                    ),
-                )
 
                 # Display widgets:
-                output_label.grid(row=row, column=0, columnspan=4, sticky="w")
-                otherwise_checkbutton.grid(row=row, column=4, columnspan=2, sticky="w")
+                output_label.grid(row=row, column=0, columnspan=6, sticky="w")
 
                 row += 1
 
-                # "Otherwise" takes whatever the other outputs don't — no
-                # condition editor to show for it.
-                if is_otherwise:
-                    continue
-
-                if routing_mode != "full":
-                    # Only one scope is ever meaningful here — a fixed
-                    # label instead of a picker, a single value, no OR.
-                    fixed_scope_label = (
-                        "Entity State"
-                        if routing_mode == "entity_state_only"
-                        else "Flow Object State"
-                    )
-                    scope_info = ROUTING_SCOPES[fixed_scope_label]
-                    current_equals = conditions[0]["equals"] if conditions else ""
-                    value_options = self.get_routing_scope_value_options(fixed_scope_label)
-                    used_values = used_values_by_scope_variable.get(
-                        (scope_info["scope"], scope_info["variable"]), set()
-                    )
-
-                    # Widgets:
-                    prefix_label = ttk.Label(entity_frame, text="IF")
-                    scope_label_widget = ttk.Label(entity_frame, text=fixed_scope_label)
-                    is_label = ttk.Label(entity_frame, text="IS")
-                    value_combobox = ttk.Combobox(
-                        entity_frame,
-                        state="readonly",
-                        width=INPUT_WIDTH,
-                        values=[""]
-                        + [
-                            display
-                            for display, internal in value_options
-                            if internal == current_equals or internal not in used_values
-                        ],
-                    )
-
-                    current_value_label = next(
-                        (
-                            display
-                            for display, internal in value_options
-                            if internal == current_equals
-                        ),
-                        "",
-                    )
-
-                    if current_value_label:
-                        value_combobox.set(current_value_label)
-
-                    # Event binding:
-                    value_combobox.bind(
-                        "<<ComboboxSelected>>",
-                        lambda event, entity_id=entity_id, target_id=target_id, fixed_scope_label=fixed_scope_label, value_combobox=value_combobox: (
-                            self.commit_fixed_scope_routing_condition(
-                                entity_id, target_id, fixed_scope_label, value_combobox
-                            )
-                        ),
-                    )
-
-                    # Display widgets:
-                    prefix_label.grid(row=row, column=0, sticky="w")
-                    scope_label_widget.grid(row=row, column=1, sticky="w")
-                    is_label.grid(row=row, column=2, sticky="w")
-                    value_combobox.grid(row=row, column=3, sticky="w")
-
-                    row += 1
-
-                    continue
-
-                # An output with no conditions yet still needs one empty row
-                # so there is somewhere to pick its first condition.
+                # An output with no conditions yet still needs one empty
+                # row, so there is somewhere to pick its first condition.
                 rows_to_render = conditions if conditions else [None]
 
                 for condition_index, condition in enumerate(rows_to_render):
                     if condition is not None:
-                        scope_label = scope_labels_by_key.get(
-                            (condition["scope"], condition["variable"]),
-                            "Flow Object State",
-                        )
+                        scope, variable = condition["scope"], condition["variable"]
                         current_equals = condition["equals"]
                     else:
-                        scope_label = "Flow Object State"
+                        scope, variable = scope_candidates[0]
                         current_equals = ""
 
-                    value_options = self.get_routing_scope_value_options(scope_label)
-                    used_values = used_values_by_scope_variable.get(
-                        (
-                            ROUTING_SCOPES[scope_label]["scope"],
-                            ROUTING_SCOPES[scope_label]["variable"],
-                        ),
-                        set(),
-                    )
+                    scope_label = get_routing_scope_label(scope, variable)
+                    value_options = get_routing_scope_values(scope, variable, self.schema)
+                    own_condition = (scope, variable, current_equals)
+
+                    value_choices = [""] if condition_index == 0 else []
+                    value_choices += [
+                        value
+                        for value in value_options
+                        if (scope, variable, value) == own_condition
+                        or (scope, variable, value) not in used_conditions
+                    ]
 
                     # Widgets:
+                    # "After cycle" states plainly, once per output, when a
+                    # condition is evaluated — every scope is checked at the
+                    # same moment (when this Flow Object's cycle at this
+                    # Entity concludes), so it belongs on the base row, not
+                    # repeated on every OR row.
                     prefix_label = ttk.Label(
-                        entity_frame, text="IF" if condition_index == 0 else "OR"
+                        entity_frame,
+                        text="IF after cycle" if condition_index == 0 else "OR",
                     )
                     scope_combobox = ttk.Combobox(
                         entity_frame,
                         state="readonly",
                         width=INPUT_WIDTH,
-                        values=list(ROUTING_SCOPES.keys()),
+                        values=scope_labels,
                     )
                     scope_combobox.set(scope_label)
                     is_label = ttk.Label(entity_frame, text="IS")
@@ -2014,25 +1957,11 @@ class ModelEditorPage(ttk.Frame):
                         entity_frame,
                         state="readonly",
                         width=INPUT_WIDTH,
-                        values=[""]
-                        + [
-                            display
-                            for display, internal in value_options
-                            if internal == current_equals or internal not in used_values
-                        ],
+                        values=value_choices,
                     )
 
-                    current_value_label = next(
-                        (
-                            display
-                            for display, internal in value_options
-                            if internal == current_equals
-                        ),
-                        "",
-                    )
-
-                    if current_value_label:
-                        value_combobox.set(current_value_label)
+                    if current_equals:
+                        value_combobox.set(current_equals)
 
                     # Event binding:
                     scope_combobox.bind(
@@ -2071,24 +2000,31 @@ class ModelEditorPage(ttk.Frame):
                     row += 1
 
                 # Widgets:
-                # "+ OR"/"Remove" as one pinned pair (bottom-right of this
-                # output's block), not a Remove button per row — "Remove"
-                # always takes off the last condition (only OR rows are
-                # removable this way, matching the base row's own "blank it
-                # to clear everything" behaviour) and is disabled when there
-                # is nothing beyond the base condition to remove.
+                # "+ OR"/"- OR" as one pinned pair (bottom-right of this
+                # output's block). "+ OR" appends a new condition using the
+                # first still-unused (scope, value) pair anywhere at this
+                # decision point; "- OR" always removes the last one (only
+                # OR rows are removable this way — the base row's own
+                # "blank it to clear everything" handles that case). Both
+                # stay visible everywhere, just disabled where they can't do
+                # anything, so every output looks the same.
                 condition_button_frame = ttk.Frame(entity_frame)
                 add_or_button = ttk.Button(
                     condition_button_frame,
                     text="+ OR",
                     width=BUTTON_WIDTH,
+                    state=(
+                        "normal"
+                        if conditions and len(used_conditions) < total_possible_conditions
+                        else "disabled"
+                    ),
                     command=lambda entity_id=entity_id, target_id=target_id: (
                         self.add_routing_or_condition(entity_id, target_id)
                     ),
                 )
-                remove_button = ttk.Button(
+                remove_or_button = ttk.Button(
                     condition_button_frame,
-                    text="Remove",
+                    text="- OR",
                     width=BUTTON_WIDTH,
                     state="normal" if len(conditions) > 1 else "disabled",
                     command=lambda entity_id=entity_id, target_id=target_id: (
@@ -2101,105 +2037,44 @@ class ModelEditorPage(ttk.Frame):
                 # with "e" sticky pins it to the output block's right edge.
                 condition_button_frame.grid(row=row, column=5, sticky="e")
                 add_or_button.grid(row=0, column=0)
-                remove_button.grid(row=0, column=1)
+                remove_or_button.grid(row=0, column=1)
 
                 row += 1
-
-    def commit_routing_otherwise(self, entity_id, target_id, otherwise_variable):
-        if otherwise_variable.get():
-            set_routing_output_otherwise(self.model_data, entity_id, target_id)
-        else:
-            clear_routing_output_otherwise(self.model_data, entity_id, target_id)
-
-        self.refresh_rules_tab()
-        self.update_model_changed_state()
-
-    def commit_fixed_scope_routing_condition(
-        self, entity_id, target_id, scope_label, value_combobox
-    ):
-        # For entities where only one scope is ever offered (see
-        # update_routing_frame) — a single condition, no OR, mirroring the
-        # original (pre-generalization) single-combobox Routing behaviour.
-        scope_info = ROUTING_SCOPES[scope_label]
-        value_options = self.get_routing_scope_value_options(scope_label)
-        selected_value = value_combobox.get()
-        equals = next(
-            (internal for display, internal in value_options if display == selected_value),
-            "",
-        )
-
-        if equals == "":
-            clear_routing_conditions(self.model_data, entity_id, target_id)
-        else:
-            existing_conditions = get_routing_conditions(self.model_data, entity_id, target_id)
-
-            if existing_conditions:
-                set_routing_condition(
-                    self.model_data,
-                    entity_id,
-                    target_id,
-                    0,
-                    scope_info["scope"],
-                    scope_info["variable"],
-                    equals,
-                )
-            else:
-                add_routing_condition(
-                    self.model_data,
-                    entity_id,
-                    target_id,
-                    scope_info["scope"],
-                    scope_info["variable"],
-                    equals,
-                )
-
-        self.refresh_rules_tab()
-        self.update_model_changed_state()
 
     def commit_routing_condition_row(
         self, entity_id, target_id, condition_index, scope_combobox, value_combobox, scope_changed
     ):
+        selected_value = value_combobox.get()
+
         scope_label = scope_combobox.get()
-        scope_info = ROUTING_SCOPES[scope_label]
+        scope, variable = next(
+            (scope, variable)
+            for scope, variable in get_routing_scope_candidates(self.schema)
+            if get_routing_scope_label(scope, variable) == scope_label
+        )
 
         # The old value likely isn't valid for the new scope's value list —
         # reset it and let the user pick again, rather than committing a
         # mismatched (scope, equals) pair.
-        selected_value = "" if scope_changed else value_combobox.get()
+        equals = "" if scope_changed else selected_value
 
-        value_options = self.get_routing_scope_value_options(scope_label)
-        equals = next(
-            (internal for display, internal in value_options if display == selected_value),
-            "",
-        )
-
-        # Blanking the first (IF) condition's value clears the whole output
-        # — the OR rows on top of it only make sense once it has a base
-        # condition. Changing its scope, though, keeps it (with equals still
-        # blank) so the scope choice doesn't visually revert on re-render.
+        # Blanking the first (IF) condition's value removes just that one
+        # condition — any OR rows shift up, the next one becoming the new
+        # base — rather than wiping the whole output. Changing the scope,
+        # though, keeps the row (with equals still blank) so the scope
+        # choice doesn't visually revert on re-render.
         if condition_index == 0 and equals == "" and not scope_changed:
-            clear_routing_conditions(self.model_data, entity_id, target_id)
+            remove_routing_condition(self.model_data, entity_id, target_id, 0)
         else:
             existing_conditions = get_routing_conditions(self.model_data, entity_id, target_id)
 
             if condition_index < len(existing_conditions):
                 set_routing_condition(
-                    self.model_data,
-                    entity_id,
-                    target_id,
-                    condition_index,
-                    scope_info["scope"],
-                    scope_info["variable"],
-                    equals,
+                    self.model_data, entity_id, target_id, condition_index, scope, variable, equals,
                 )
             else:
                 add_routing_condition(
-                    self.model_data,
-                    entity_id,
-                    target_id,
-                    scope_info["scope"],
-                    scope_info["variable"],
-                    equals,
+                    self.model_data, entity_id, target_id, scope, variable, equals,
                 )
 
         # Re-render (and re-bind scrolling on the fresh widgets — this
@@ -2211,30 +2086,30 @@ class ModelEditorPage(ttk.Frame):
         self.update_model_changed_state()
 
     def add_routing_or_condition(self, entity_id, target_id):
-        # Default the new row to the first still-available Flow Object
-        # State value, so it starts out meaningful rather than blank.
-        used_values = set()
+        used_conditions = set()
 
         for relationship in get_output_relationships(entity_id, self.model_data):
             for condition in get_routing_conditions(
                 self.model_data, entity_id, relationship["target"]
             ):
-                if condition["scope"] == "flow_object" and condition["variable"] == "quality":
-                    used_values.add(condition["equals"])
+                used_conditions.add(
+                    (condition["scope"], condition["variable"], condition["equals"])
+                )
 
-        quality_values = self.schema.get_flow_object_schema()["states"]["quality"][
-            "values"
-        ]
-        default_value = next(
-            (value for value in quality_values if value not in used_values), ""
-        )
+        # Default the new row to the first still-unused (scope, value) pair
+        # anywhere in the schema's candidate list, so it starts out
+        # meaningful rather than blank.
+        for scope, variable in get_routing_scope_candidates(self.schema):
+            for value in get_routing_scope_values(scope, variable, self.schema):
+                if (scope, variable, value) not in used_conditions:
+                    add_routing_condition(
+                        self.model_data, entity_id, target_id, scope, variable, value
+                    )
 
-        add_routing_condition(
-            self.model_data, entity_id, target_id, "flow_object", "quality", default_value
-        )
+                    self.refresh_rules_tab()
+                    self.update_model_changed_state()
 
-        self.refresh_rules_tab()
-        self.update_model_changed_state()
+                    return
 
     def remove_last_routing_condition(self, entity_id, target_id):
         conditions = get_routing_conditions(self.model_data, entity_id, target_id)
