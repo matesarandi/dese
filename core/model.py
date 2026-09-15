@@ -79,24 +79,6 @@ def find_routing_rule(model_data, entity_id):
     )
 
 
-def get_routing_conditions(model_data, entity_id, target_id):
-    # A list, OR-combined: an output is taken if ANY of its conditions match.
-    rule = find_routing_rule(model_data, entity_id)
-
-    if rule is None:
-        return []
-
-    output = next(
-        (output for output in rule["outputs"] if output["target"] == target_id),
-        None,
-    )
-
-    if output is None:
-        return []
-
-    return output.get("conditions", [])
-
-
 def add_routing_condition(model_data, entity_id, target_id, scope, variable, equals):
     rule = find_routing_rule(model_data, entity_id)
 
@@ -117,50 +99,55 @@ def add_routing_condition(model_data, entity_id, target_id, scope, variable, equ
         output.setdefault("conditions", []).append(condition)
 
 
-def set_routing_condition(model_data, entity_id, target_id, index, scope, variable, equals):
+def get_routing_condition_owner(model_data, entity_id, scope, variable, equals):
+    # Which output target currently claims this (scope, variable, equals)
+    # condition at this decision point, or None if nothing does.
     rule = find_routing_rule(model_data, entity_id)
 
     if rule is None:
+        return None
+
+    for output in rule["outputs"]:
+        for condition in output.get("conditions", []):
+            if (condition["scope"], condition["variable"], condition["equals"]) == (
+                scope,
+                variable,
+                equals,
+            ):
+                return output["target"]
+
+    return None
+
+
+def set_routing_condition_owner(model_data, entity_id, scope, variable, equals, target_id):
+    # Assigns this (scope, variable, equals) condition to target_id's
+    # output, removing it from wherever it was before. target_id=None just
+    # unassigns it. A no-op if it's already exactly where it should be.
+    current_owner = get_routing_condition_owner(model_data, entity_id, scope, variable, equals)
+
+    if current_owner == target_id:
         return
 
-    output = next(
-        (output for output in rule["outputs"] if output["target"] == target_id),
-        None,
-    )
+    if current_owner is not None:
+        rule = find_routing_rule(model_data, entity_id)
+        output = next(
+            output for output in rule["outputs"] if output["target"] == current_owner
+        )
+        output["conditions"] = [
+            condition
+            for condition in output["conditions"]
+            if (condition["scope"], condition["variable"], condition["equals"])
+            != (scope, variable, equals)
+        ]
 
-    if output is None or index >= len(output.get("conditions", [])):
-        return
+        if not output["conditions"]:
+            rule["outputs"].remove(output)
 
-    output["conditions"][index] = {"scope": scope, "variable": variable, "equals": equals}
+        if not rule["outputs"]:
+            model_data["rules"].remove(rule)
 
-
-def remove_routing_condition(model_data, entity_id, target_id, index):
-    rule = find_routing_rule(model_data, entity_id)
-
-    if rule is None:
-        return
-
-    output = next(
-        (output for output in rule["outputs"] if output["target"] == target_id),
-        None,
-    )
-
-    if output is None:
-        return
-
-    conditions = output.get("conditions", [])
-
-    if index < len(conditions):
-        del conditions[index]
-
-    # Drop the output once it has no conditions left, and the rule entirely
-    # once none of its outputs have any, instead of leaving empty, orphaned
-    # entries in model_data["rules"].
-    if not conditions:
-        rule["outputs"].remove(output)
-
-    if not rule["outputs"]:
-        model_data["rules"].remove(rule)
+    if target_id is not None:
+        add_routing_condition(model_data, entity_id, target_id, scope, variable, equals)
 
 
 def move_routing_rule_output(model_data, old_entity_id, old_target_id, new_entity_id, new_target_id):
@@ -232,19 +219,29 @@ def remove_entity_from_rules(model_data, entity_id):
     model_data["rules"] = remaining_rules
 
 
-def get_routing_scope_candidates(schema):
-    # (scope, variable) pairs for every state declared anywhere in the base
-    # schema. A Routing condition can check any Entity or Flow Object state
-    # that exists — nothing is excluded, and a new state added to either
-    # states block (now or in the future, for any Entity type) becomes a
-    # selectable condition automatically, with no code change here.
-    candidates = []
+def get_routing_scope_candidates(entity, model_data, schema):
+    # An Entity's own state is always a candidate — every Entity can
+    # observe itself, no matter its type; a new state added to
+    # base_entity_schema (now or in the future) becomes selectable
+    # automatically, with no code change here. A Flow Object's state is
+    # only a candidate where the Entity type actually has a way to read
+    # it (declared via rule_eligibility.reads_flow_object_states) — e.g.
+    # only Inspection can see Flow Object Quality, since that's the one
+    # that actually inspects it.
+    candidates = [
+        ("entity", variable) for variable in schema.get_base_entity_schema()["states"]
+    ]
 
-    for variable in schema.get_base_entity_schema()["states"]:
-        candidates.append(("entity", variable))
+    entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
+    readable_flow_object_states = (
+        entity_schema.get("rule_eligibility", {}).get("reads_flow_object_states", [])
+        if entity_schema is not None
+        else []
+    )
 
     for variable in schema.get_flow_object_schema()["states"]:
-        candidates.append(("flow_object", variable))
+        if variable in readable_flow_object_states:
+            candidates.append(("flow_object", variable))
 
     return candidates
 
@@ -268,7 +265,7 @@ def supports_failure(entity, model_data, schema):
     if entity_schema is None:
         return False
 
-    return entity_schema.get("supports_failure", False)
+    return entity_schema.get("rule_eligibility", {}).get("supports_failure", False)
 
 
 def get_failure_eligible_entity_ids(model_data, schema):
