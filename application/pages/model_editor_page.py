@@ -1906,6 +1906,29 @@ class ModelEditorPage(ttk.Frame):
 
             row = 0
 
+            # Widgets:
+            # Every scope here (the Entity's own state, any Flow Object
+            # state) is evaluated at the same moment — when this Flow
+            # Object's cycle at this Entity concludes — so it's stated
+            # once per decision point instead of repeated per scope group.
+            timing_note = ttk.Label(
+                entity_frame, text="Values are read once the operation finishes."
+            )
+
+            # Display widgets:
+            # Spans the full row (not just column 0) so this sentence,
+            # which is wider than any single column, doesn't need to be
+            # folded into the column-0 width measurement below.
+            timing_note.grid(
+                row=row,
+                column=0,
+                columnspan=1 + len(target_ids),
+                sticky="w",
+                pady=(0, 4),
+            )
+
+            row += 1
+
             for column_index, target_id in enumerate(target_ids):
                 # Widgets:
                 output_header = ttk.Label(entity_frame, text=self.get_entity_name(target_id))
