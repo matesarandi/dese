@@ -1,4 +1,4 @@
-from dese.constants import MAIN_HIERARCHY_ROLE
+from dese.constants import END_OF_PROCESS_ROUTING_TARGET, MAIN_HIERARCHY_ROLE
 
 
 def is_main_entity(entity, model_data, schema):
@@ -18,14 +18,33 @@ def get_output_relationships(entity_id, model_data):
     ]
 
 
+def get_routing_target_ids(entity, model_data):
+    # The set of possible Routing destinations for this Entity: every real
+    # output relationship, plus the virtual END_OF_PROCESS_ROUTING_TARGET
+    # destination if the Entity is marked end_of_process — it doesn't lead
+    # to a real downstream Entity, just a completed Flow Object.
+    target_ids = [
+        relationship["target"]
+        for relationship in get_output_relationships(entity["id"], model_data)
+    ]
+
+    if entity.get("end_of_process"):
+        target_ids.append(END_OF_PROCESS_ROUTING_TARGET)
+
+    return target_ids
+
+
 def find_decision_points(model_data, schema):
-    # A decision point is a main entity with more than one actual output
-    # relationship — the model structure alone tells the Simulation Engine
-    # where a Routing Rule is required, no extra user input needed. Only
-    # main-to-main edges are followed onward (Process Supply/Sink attach to a
-    # main entity but are not part of the main process chain); the model is
-    # assumed to be a DAG (no rework loops) — see project_product_vision
-    # memory for that decision.
+    # A decision point is a main entity with more than one possible
+    # Routing destination — real output relationships, plus the virtual
+    # "End of Process" destination end_of_process adds (see
+    # get_routing_target_ids) — the model structure alone tells the
+    # Simulation Engine where a Routing Rule is required, no extra user
+    # input needed. Only main-to-main edges are followed onward for
+    # traversal (Process Supply/Sink attach to a main entity but are not
+    # part of the main process chain); the model is assumed to be a DAG
+    # (no rework loops) — see project_product_vision memory for that
+    # decision.
     entities_by_id = {entity["id"]: entity for entity in model_data["entities"]}
 
     beginning_entity = next(
@@ -52,7 +71,9 @@ def find_decision_points(model_data, schema):
         entity = entities_by_id[entity_id]
         output_relationships = get_output_relationships(entity_id, model_data)
 
-        if is_main_entity(entity, model_data, schema) and len(output_relationships) > 1:
+        if is_main_entity(entity, model_data, schema) and len(
+            get_routing_target_ids(entity, model_data)
+        ) > 1:
             decision_points.append(entity_id)
 
         for relationship in output_relationships:
@@ -68,33 +89,42 @@ def find_decision_points(model_data, schema):
     return decision_points
 
 
-def find_routing_rule(model_data, entity_id):
+def find_entity_rules(model_data, entity_id):
+    # The single bundle holding everything Routing/Failure/Maintenance-
+    # related for one Entity — at most one per Entity, keyed by "at".
     return next(
-        (
-            rule
-            for rule in model_data["rules"]
-            if rule.get("type") == "Routing" and rule.get("at") == entity_id
-        ),
+        (rule for rule in model_data["rules"] if rule.get("at") == entity_id),
         None,
+    )
+
+
+def get_or_create_entity_rules(model_data, entity_id):
+    bundle = find_entity_rules(model_data, entity_id)
+
+    if bundle is None:
+        bundle = {"at": entity_id}
+        model_data["rules"].append(bundle)
+
+    return bundle
+
+
+def is_entity_rules_bundle_empty(bundle):
+    return (
+        not bundle.get("routing")
+        and not bundle.get("failure")
+        and not bundle.get("maintenance")
     )
 
 
 def add_routing_condition(model_data, entity_id, target_id, scope, variable, equals):
-    rule = find_routing_rule(model_data, entity_id)
+    bundle = get_or_create_entity_rules(model_data, entity_id)
+    outputs = bundle.setdefault("routing", {}).setdefault("outputs", [])
 
-    if rule is None:
-        rule = {"type": "Routing", "at": entity_id, "outputs": []}
-        model_data["rules"].append(rule)
-
-    output = next(
-        (output for output in rule["outputs"] if output["target"] == target_id),
-        None,
-    )
-
+    output = next((output for output in outputs if output["target"] == target_id), None)
     condition = {"scope": scope, "variable": variable, "equals": equals}
 
     if output is None:
-        rule["outputs"].append({"target": target_id, "conditions": [condition]})
+        outputs.append({"target": target_id, "conditions": [condition]})
     else:
         output.setdefault("conditions", []).append(condition)
 
@@ -102,12 +132,12 @@ def add_routing_condition(model_data, entity_id, target_id, scope, variable, equ
 def get_routing_condition_owner(model_data, entity_id, scope, variable, equals):
     # Which output target currently claims this (scope, variable, equals)
     # condition at this decision point, or None if nothing does.
-    rule = find_routing_rule(model_data, entity_id)
+    bundle = find_entity_rules(model_data, entity_id)
 
-    if rule is None:
+    if bundle is None:
         return None
 
-    for output in rule["outputs"]:
+    for output in bundle.get("routing", {}).get("outputs", []):
         for condition in output.get("conditions", []):
             if (condition["scope"], condition["variable"], condition["equals"]) == (
                 scope,
@@ -129,10 +159,9 @@ def set_routing_condition_owner(model_data, entity_id, scope, variable, equals, 
         return
 
     if current_owner is not None:
-        rule = find_routing_rule(model_data, entity_id)
-        output = next(
-            output for output in rule["outputs"] if output["target"] == current_owner
-        )
+        bundle = find_entity_rules(model_data, entity_id)
+        outputs = bundle["routing"]["outputs"]
+        output = next(output for output in outputs if output["target"] == current_owner)
         output["conditions"] = [
             condition
             for condition in output["conditions"]
@@ -141,10 +170,13 @@ def set_routing_condition_owner(model_data, entity_id, scope, variable, equals, 
         ]
 
         if not output["conditions"]:
-            rule["outputs"].remove(output)
+            outputs.remove(output)
 
-        if not rule["outputs"]:
-            model_data["rules"].remove(rule)
+        if not outputs:
+            bundle.pop("routing", None)
+
+        if is_entity_rules_bundle_empty(bundle):
+            model_data["rules"].remove(bundle)
 
     if target_id is not None:
         add_routing_condition(model_data, entity_id, target_id, scope, variable, equals)
@@ -157,64 +189,76 @@ def move_routing_rule_output(model_data, old_entity_id, old_target_id, new_entit
     # new_target_id) instead. A no-op if there's nothing configured there,
     # or if the destination already has its own output (never clobber
     # existing configuration).
-    old_rule = find_routing_rule(model_data, old_entity_id)
+    old_bundle = find_entity_rules(model_data, old_entity_id)
 
-    if old_rule is None:
+    if old_bundle is None:
         return
 
+    old_outputs = old_bundle.get("routing", {}).get("outputs", [])
     old_output = next(
-        (output for output in old_rule["outputs"] if output["target"] == old_target_id),
-        None,
+        (output for output in old_outputs if output["target"] == old_target_id), None
     )
 
     if old_output is None:
         return
 
-    # Same entity on both ends (an output-side retarget) means old_rule and
-    # new_rule are the same object — look it up once to avoid operating on
-    # a stale copy after it's removed from model_data["rules"] below.
-    new_rule = old_rule if new_entity_id == old_entity_id else find_routing_rule(
-        model_data, new_entity_id
+    # Same entity on both ends (an output-side retarget) means old_bundle
+    # and new_bundle are the same object — look it up once to avoid
+    # operating on a stale copy after mutation below.
+    new_bundle = (
+        old_bundle
+        if new_entity_id == old_entity_id
+        else find_entity_rules(model_data, new_entity_id)
+    )
+    new_outputs = (
+        new_bundle.get("routing", {}).get("outputs", []) if new_bundle is not None else []
     )
 
-    if new_rule is not None and any(
-        output["target"] == new_target_id for output in new_rule["outputs"]
-    ):
+    if any(output["target"] == new_target_id for output in new_outputs):
         return
 
-    old_rule["outputs"].remove(old_output)
+    old_outputs.remove(old_output)
     old_output["target"] = new_target_id
 
-    if new_rule is None:
-        new_rule = {"type": "Routing", "at": new_entity_id, "outputs": []}
-        model_data["rules"].append(new_rule)
+    if not old_outputs:
+        old_bundle.pop("routing", None)
 
-    new_rule["outputs"].append(old_output)
+    if new_bundle is None:
+        new_bundle = get_or_create_entity_rules(model_data, new_entity_id)
 
-    if not old_rule["outputs"] and old_rule is not new_rule:
-        model_data["rules"].remove(old_rule)
+    new_bundle.setdefault("routing", {}).setdefault("outputs", []).append(old_output)
+
+    if old_bundle is not new_bundle and is_entity_rules_bundle_empty(old_bundle):
+        model_data["rules"].remove(old_bundle)
 
 
 def remove_entity_from_rules(model_data, entity_id):
     # Deleting an Entity shouldn't leave Rule data referencing an ID that no
-    # longer exists — an orphaned Routing rule could otherwise resurface
+    # longer exists — an orphaned Routing output could otherwise resurface
     # later (e.g. if a decision point regains a second output) with
-    # conditions the user never meant to keep.
+    # conditions the user never meant to keep. MaintenanceResource (it has
+    # no "at") is never touched here — it isn't tied to any single Entity.
     remaining_rules = []
 
-    for rule in model_data["rules"]:
-        if rule.get("at") == entity_id:
+    for rule_entry in model_data["rules"]:
+        if rule_entry.get("at") == entity_id:
             continue
 
-        if rule.get("type") == "Routing":
-            rule["outputs"] = [
-                output for output in rule["outputs"] if output["target"] != entity_id
-            ]
+        if "at" in rule_entry:
+            routing = rule_entry.get("routing")
 
-            if not rule["outputs"]:
+            if routing is not None:
+                routing["outputs"] = [
+                    output for output in routing["outputs"] if output["target"] != entity_id
+                ]
+
+                if not routing["outputs"]:
+                    rule_entry.pop("routing", None)
+
+            if is_entity_rules_bundle_empty(rule_entry):
                 continue
 
-        remaining_rules.append(rule)
+        remaining_rules.append(rule_entry)
 
     model_data["rules"] = remaining_rules
 
@@ -276,64 +320,32 @@ def get_failure_eligible_entity_ids(model_data, schema):
     ]
 
 
-def find_failure_rule(model_data, entity_id):
-    return next(
-        (
-            rule
-            for rule in model_data["rules"]
-            if rule.get("type") == "Failure" and rule.get("at") == entity_id
-        ),
-        None,
-    )
-
-
 def get_failure_parameter(model_data, entity_id, field_name):
-    rule = find_failure_rule(model_data, entity_id)
+    bundle = find_entity_rules(model_data, entity_id)
 
-    if rule is None:
+    if bundle is None:
         return None
 
-    return rule.get(field_name)
+    return bundle.get("failure", {}).get(field_name)
 
 
 def set_failure_parameter(model_data, entity_id, field_name, value):
-    rule = find_failure_rule(model_data, entity_id)
-
-    if rule is None:
-        rule = {"type": "Failure", "at": entity_id}
-        model_data["rules"].append(rule)
-
-    rule[field_name] = value
-
-
-def find_maintenance_rule(model_data, entity_id):
-    return next(
-        (
-            rule
-            for rule in model_data["rules"]
-            if rule.get("type") == "Maintenance" and rule.get("at") == entity_id
-        ),
-        None,
-    )
+    bundle = get_or_create_entity_rules(model_data, entity_id)
+    bundle.setdefault("failure", {})[field_name] = value
 
 
 def get_maintenance_parameter(model_data, entity_id, field_name):
-    rule = find_maintenance_rule(model_data, entity_id)
+    bundle = find_entity_rules(model_data, entity_id)
 
-    if rule is None:
+    if bundle is None:
         return None
 
-    return rule.get(field_name)
+    return bundle.get("maintenance", {}).get(field_name)
 
 
 def set_maintenance_parameter(model_data, entity_id, field_name, value):
-    rule = find_maintenance_rule(model_data, entity_id)
-
-    if rule is None:
-        rule = {"type": "Maintenance", "at": entity_id}
-        model_data["rules"].append(rule)
-
-    rule[field_name] = value
+    bundle = get_or_create_entity_rules(model_data, entity_id)
+    bundle.setdefault("maintenance", {})[field_name] = value
 
 
 def find_maintenance_resource_rule(model_data):

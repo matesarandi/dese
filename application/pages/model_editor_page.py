@@ -8,6 +8,7 @@ from dese.application.pages.flow_object_editor import FlowObjectEditor
 from dese.constants import (
     BUTTON_WIDTH,
     CURRENT_SCHEMA_VERSION,
+    END_OF_PROCESS_ROUTING_TARGET,
     ENTITY_ID_COLUMN_WIDTH,
     ENTITY_INPUTS_COLUMN_WIDTH,
     ENTITY_NAME_COLUMN_WIDTH,
@@ -27,11 +28,11 @@ from dese.core.model import (
     get_maintenance_dispatch_priority,
     get_maintenance_parameter,
     get_maintenance_resource_parameter,
-    get_output_relationships,
     get_routing_condition_owner,
     get_routing_scope_candidates,
     get_routing_scope_label,
     get_routing_scope_values,
+    get_routing_target_ids,
     move_routing_rule_output,
     remove_entity_from_rules,
     set_failure_parameter,
@@ -1064,6 +1065,21 @@ class ModelEditorPage(ttk.Frame):
 
         return ""
 
+    def get_routing_target_label(self, target_id):
+        # The virtual End of Process destination isn't a real Entity, so
+        # there's no name to look up for it — its label is derived from
+        # the same field name as the target value itself
+        # (END_OF_PROCESS_ROUTING_TARGET), not a separately hardcoded
+        # string. Title-cased word by word, except "of" — plain .title()
+        # would capitalize that too ("End Of Process").
+        if target_id == END_OF_PROCESS_ROUTING_TARGET:
+            return " ".join(
+                word if word == "of" else word.capitalize()
+                for word in END_OF_PROCESS_ROUTING_TARGET.split("_")
+            )
+
+        return self.get_entity_name(target_id)
+
     def get_entity_id(self, entity_name):
         for entity in self.model_data["entities"]:
             if entity["name"] == entity_name:
@@ -1680,9 +1696,8 @@ class ModelEditorPage(ttk.Frame):
         # visibly jump the page back to the top.
         scroll_position = self.rules_canvas.yview()[0]
 
-        self.update_routing_frame()
-        self.update_failure_frame()
-        self.update_maintenance_frame()
+        self.update_entity_rules_frame()
+        self.update_maintenance_resource_frame()
 
         bind_canvas_mousewheel(self.rules_canvas)
 
@@ -1730,284 +1745,300 @@ class ModelEditorPage(ttk.Frame):
         # Grid (content):
         self.rules_content.columnconfigure(0, weight=1)
 
-        # Routing Frame
+        # Entity Rules
         # ==========================
+        # One "AT ..." LabelFrame per Entity that has Routing (it's a
+        # decision point) and/or Failure/Maintenance (it supports_failure)
+        # — whichever apply, nested inside that one Entity's frame, added
+        # in update_entity_rules_frame.
 
         # Frame widget:
-        self.routing_frame = ttk.LabelFrame(
-            self.rules_content,
-            text="Routing",
-            style="DESE.Section.TLabelframe",
-            padding=PAD,
-        )
+        self.entity_rules_frame = ttk.Frame(self.rules_content)
 
         # Grid:
-        # Each decision point gets its own nested "AT ..." LabelFrame
-        # (added in update_routing_frame) — column 0 stretches so those
-        # fill the Routing frame's full width.
-        self.routing_frame.columnconfigure(0, weight=1)
+        self.entity_rules_frame.columnconfigure(0, weight=1)
 
         # Display frame widget:
-        self.routing_frame.grid(row=0, column=0, sticky="new")
+        self.entity_rules_frame.grid(row=0, column=0, sticky="new")
 
-        # Failure Frame
+        # Maintenance Resource
         # ==========================
-        # The unplanned, stochastic side of entity breakdown — what happens
-        # to the Entity. The planned countermeasure lives in Maintenance
-        # below.
+        # Not tied to any single Entity — the shared capacity/dispatch
+        # policy for the whole model's maintenance/repair work — so it
+        # stays outside the per-Entity "AT ..." blocks above.
 
         # Frame widget:
-        self.failure_frame = ttk.LabelFrame(
-            self.rules_content,
-            text="Failure",
-            style="DESE.Section.TLabelframe",
-            padding=PAD,
-        )
-
-        # Grid:
-        # Each Entity gets its own nested "AT ..." LabelFrame (added in
-        # update_failure_frame) — column 0 stretches so those fill the
-        # Failure frame's full width.
-        self.failure_frame.columnconfigure(0, weight=1)
-
-        # Display frame widget:
-        self.failure_frame.grid(row=1, column=0, sticky="new")
-
-        # Maintenance Frame
-        # ==========================
-        # The planned countermeasure side: Plan is the per-Entity timing/
-        # duration policy, Resource is the shared capacity/dispatch setup
-        # both Plan and unplanned Failure repairs compete for.
-
-        # Frame widget:
-        self.maintenance_frame = ttk.LabelFrame(
-            self.rules_content,
-            text="Maintenance",
-            style="DESE.Section.TLabelframe",
-            padding=PAD,
-        )
-
-        # Grid:
-        self.maintenance_frame.columnconfigure(0, weight=1)
-
-        # Display frame widget:
-        self.maintenance_frame.grid(row=2, column=0, sticky="new")
-
-        # Child widgets:
-        self.maintenance_plan_frame = ttk.LabelFrame(
-            self.maintenance_frame,
-            text="Plan",
-            style="DESE.Section.TLabelframe",
-            padding=PAD,
-        )
         self.maintenance_resource_frame = ttk.LabelFrame(
-            self.maintenance_frame,
-            text="Resource",
+            self.rules_content,
+            text="Maintenance Resource",
             style="DESE.Section.TLabelframe",
             padding=PAD,
         )
 
-        # Grid (child widgets):
-        # Plan gets a nested "AT ..." LabelFrame per Entity (column 0
-        # stretches for those); Resource isn't per-Entity, so it keeps its
-        # own trailing spacer column for the Capacity/Dispatch Priority rows.
-        self.maintenance_plan_frame.columnconfigure(0, weight=1)
+        # Grid:
         self.maintenance_resource_frame.columnconfigure(3, weight=1)
 
-        # Display child widgets:
-        self.maintenance_plan_frame.grid(row=0, column=0, sticky="new")
+        # Display frame widget:
         self.maintenance_resource_frame.grid(row=1, column=0, sticky="new")
 
         # Content:
         self.refresh_rules_tab()
 
-    def update_routing_frame(self):
+    def update_entity_rules_frame(self):
         # Clear existing widgets:
-        for widget in self.routing_frame.winfo_children():
+        for widget in self.entity_rules_frame.winfo_children():
             widget.destroy()
 
-        decision_point_ids = find_decision_points(self.model_data, self.schema)
+        # An Entity gets an "AT ..." block if it's a decision point
+        # (Routing applies), failure-eligible (Failure/Maintenance apply),
+        # or both — whichever sections are relevant appear nested inside
+        # that one shared block, instead of three separate top-level
+        # sections each repeating the same Entity list.
+        decision_point_ids = set(find_decision_points(self.model_data, self.schema))
+        failure_eligible_ids = set(get_failure_eligible_entity_ids(self.model_data, self.schema))
+        relevant_entity_ids = [
+            entity["id"]
+            for entity in self.model_data["entities"]
+            if entity["id"] in decision_point_ids or entity["id"] in failure_eligible_ids
+        ]
 
-        if not decision_point_ids:
-            no_decision_points_label = ttk.Label(
-                self.routing_frame,
-                text="No decision points found in this model yet.",
+        if not relevant_entity_ids:
+            no_rules_label = ttk.Label(
+                self.entity_rules_frame,
+                text="No entities with Routing, Failure, or Maintenance rules in this model yet.",
             )
-            no_decision_points_label.grid(row=0, column=0, sticky="w")
+            no_rules_label.grid(row=0, column=0, sticky="w")
             return
 
-        for decision_point_index, entity_id in enumerate(decision_point_ids):
+        for entity_index, entity_id in enumerate(relevant_entity_ids):
             entity = next(
                 entity for entity in self.model_data["entities"] if entity["id"] == entity_id
             )
 
-            # An Entity's own state is always a candidate; a Flow Object
-            # state is only a candidate where this Entity type actually has
-            # a way to read it (see get_routing_scope_candidates). Each
-            # candidate is one row of the matrix below; each current output
-            # is one column, plus a leading "unassigned" column.
-            scope_candidates = get_routing_scope_candidates(entity, self.model_data, self.schema)
-
-            target_ids = [
-                relationship["target"]
-                for relationship in get_output_relationships(entity_id, self.model_data)
-            ]
-
             # Widgets:
             entity_frame = ttk.LabelFrame(
-                self.routing_frame,
+                self.entity_rules_frame,
                 text=f'AT "{self.get_entity_name(entity_id)}"',
                 style="DESE.Section.TLabelframe",
                 padding=PAD,
             )
 
             # Grid:
-            # A fixed column 0 width keeps the checkbox columns justified
-            # at the same x position on every row, regardless of which
-            # value's label is currently showing — same trick as the
-            # Failure/Maintenance sections. It has to fit the longest text
-            # that starts there, which includes the scope group labels
-            # ("Flow Object Quality" etc., not just the value names) since
-            # those also start in column 0, spanning across the rest —
-            # otherwise a long one overflows past its own column budget
-            # into whatever sits to its right.
-            default_font = tkfont.nametofont("TkDefaultFont")
-            label_column_width = self.measure_column_width(
-                [
-                    get_routing_scope_label(scope, variable)
-                    for scope, variable in scope_candidates
-                ]
-                + [
-                    value
-                    for scope, variable in scope_candidates
-                    for value in get_routing_scope_values(scope, variable, self.schema)
-                ],
-                default_font,
-            )
-            entity_frame.columnconfigure(0, minsize=label_column_width)
-            # Each output column is sized to its own header text (the
-            # Entity's name) the same way, instead of a guessed padding
-            # value — a short name gets a narrower column, a long one a
-            # wider column, and the checkbox centers within it either way.
-            for column_index, target_id in enumerate(target_ids):
-                entity_frame.columnconfigure(
-                    1 + column_index,
-                    minsize=self.measure_column_width(
-                        [self.get_entity_name(target_id)], default_font
-                    ),
-                )
-            # The trailing column is a spacer that absorbs the extra width,
-            # so the value/checkbox columns stay packed together on the
-            # left instead of stretching to fill the frame.
-            entity_frame.columnconfigure(1 + len(target_ids), weight=1)
+            entity_frame.columnconfigure(0, weight=1)
 
             # Display widgets:
-            entity_frame.grid(row=decision_point_index, column=0, sticky="new")
+            entity_frame.grid(row=entity_index, column=0, sticky="new")
 
             row = 0
 
-            # Widgets:
-            # Every scope here (the Entity's own state, any Flow Object
-            # state) is evaluated at the same moment — when this Flow
-            # Object's cycle at this Entity concludes — so it's stated
-            # once per decision point instead of repeated per scope group.
-            timing_note = ttk.Label(
-                entity_frame, text="Values are read once the operation finishes."
-            )
-
-            # Display widgets:
-            # Spans the full row (not just column 0) so this sentence,
-            # which is wider than any single column, doesn't need to be
-            # folded into the column-0 width measurement below.
-            timing_note.grid(
-                row=row,
-                column=0,
-                columnspan=1 + len(target_ids),
-                sticky="w",
-                pady=(0, 4),
-            )
-
-            row += 1
-
-            for column_index, target_id in enumerate(target_ids):
+            if entity_id in decision_point_ids:
                 # Widgets:
-                output_header = ttk.Label(entity_frame, text=self.get_entity_name(target_id))
+                routing_frame = ttk.LabelFrame(
+                    entity_frame,
+                    text="Routing",
+                    style="DESE.Section.TLabelframe",
+                    padding=PAD,
+                )
+                self.render_routing_matrix(routing_frame, entity, entity_id)
 
                 # Display widgets:
-                output_header.grid(row=row, column=1 + column_index, pady=(0, 4))
+                routing_frame.grid(row=row, column=0, sticky="new")
 
-            row += 1
+                row += 1
 
-            for scope_index, (scope, variable) in enumerate(scope_candidates):
-                if scope_index > 0:
-                    # Widgets:
-                    scope_separator = ttk.Separator(entity_frame, orient="horizontal")
-
-                    # Display widgets:
-                    scope_separator.grid(
-                        row=row,
-                        column=0,
-                        columnspan=1 + len(target_ids),
-                        sticky="ew",
-                        pady=6,
-                    )
-
-                    row += 1
-
+            if entity_id in failure_eligible_ids:
                 # Widgets:
-                scope_label = ttk.Label(
-                    entity_frame, text=get_routing_scope_label(scope, variable)
+                failure_frame = ttk.LabelFrame(
+                    entity_frame,
+                    text="Failure",
+                    style="DESE.Section.TLabelframe",
+                    padding=PAD,
+                )
+                self.render_rule_property_form(
+                    failure_frame, entity_id, "Failure", get_failure_parameter, set_failure_parameter
                 )
 
                 # Display widgets:
-                scope_label.grid(
+                failure_frame.grid(row=row, column=0, sticky="new")
+
+                row += 1
+
+                # Widgets:
+                maintenance_frame = ttk.LabelFrame(
+                    entity_frame,
+                    text="Maintenance",
+                    style="DESE.Section.TLabelframe",
+                    padding=PAD,
+                )
+                self.render_rule_property_form(
+                    maintenance_frame,
+                    entity_id,
+                    "Maintenance",
+                    get_maintenance_parameter,
+                    set_maintenance_parameter,
+                )
+
+                # Display widgets:
+                maintenance_frame.grid(row=row, column=0, sticky="new")
+
+                row += 1
+
+    def render_routing_matrix(self, parent_frame, entity, entity_id):
+        # An Entity's own state is always a candidate; a Flow Object state
+        # is only a candidate where this Entity type actually has a way to
+        # read it (see get_routing_scope_candidates). Each candidate is one
+        # row of the matrix below; each current output is one column, plus
+        # a leading "unassigned" column.
+        scope_candidates = get_routing_scope_candidates(entity, self.model_data, self.schema)
+
+        # A real output relationship, or the virtual "End of Process"
+        # destination end_of_process adds (self-referencing — see
+        # get_routing_target_ids).
+        target_ids = get_routing_target_ids(entity, self.model_data)
+
+        # Grid:
+        # A fixed column 0 width keeps the checkbox columns justified at
+        # the same x position on every row, regardless of which value's
+        # label is currently showing — same trick as the Failure/
+        # Maintenance sections. It has to fit the longest text that starts
+        # there, which includes the scope group labels ("Flow Object
+        # Quality" etc., not just the value names) since those also start
+        # in column 0, spanning across the rest — otherwise a long one
+        # overflows past its own column budget into whatever sits to its
+        # right.
+        default_font = tkfont.nametofont("TkDefaultFont")
+        label_column_width = self.measure_column_width(
+            [get_routing_scope_label(scope, variable) for scope, variable in scope_candidates]
+            + [
+                value
+                for scope, variable in scope_candidates
+                for value in get_routing_scope_values(scope, variable, self.schema)
+            ],
+            default_font,
+        )
+        parent_frame.columnconfigure(0, minsize=label_column_width)
+        # Each output column is sized to its own header text (the Entity's
+        # name) the same way, instead of a guessed padding value — a short
+        # name gets a narrower column, a long one a wider column, and the
+        # checkbox centers within it either way.
+        for column_index, target_id in enumerate(target_ids):
+            parent_frame.columnconfigure(
+                1 + column_index,
+                minsize=self.measure_column_width(
+                    [self.get_routing_target_label(target_id)], default_font
+                ),
+            )
+        # The trailing column is a spacer that absorbs the extra width, so
+        # the value/checkbox columns stay packed together on the left
+        # instead of stretching to fill the frame.
+        parent_frame.columnconfigure(1 + len(target_ids), weight=1)
+
+        row = 0
+
+        # Widgets:
+        # Every scope here (the Entity's own state, any Flow Object state)
+        # is evaluated at the same moment — when this Flow Object's cycle
+        # at this Entity concludes — so it's stated once per decision
+        # point instead of repeated per scope group.
+        timing_note = ttk.Label(
+            parent_frame, text="Values are read once the operation finishes."
+        )
+
+        # Display widgets:
+        # Spans the full row (not just column 0) so this sentence, which
+        # is wider than any single column, doesn't need to be folded into
+        # the column-0 width measurement above.
+        timing_note.grid(
+            row=row,
+            column=0,
+            columnspan=1 + len(target_ids),
+            sticky="w",
+            pady=(0, 4),
+        )
+
+        row += 1
+
+        for column_index, target_id in enumerate(target_ids):
+            # Widgets:
+            output_header = ttk.Label(
+                parent_frame, text=self.get_routing_target_label(target_id)
+            )
+
+            # Display widgets:
+            output_header.grid(row=row, column=1 + column_index, pady=(0, 4))
+
+        row += 1
+
+        for scope_index, (scope, variable) in enumerate(scope_candidates):
+            if scope_index > 0:
+                # Widgets:
+                scope_separator = ttk.Separator(parent_frame, orient="horizontal")
+
+                # Display widgets:
+                scope_separator.grid(
                     row=row,
                     column=0,
                     columnspan=1 + len(target_ids),
-                    sticky="w",
-                    pady=(0, 2),
+                    sticky="ew",
+                    pady=6,
                 )
 
                 row += 1
 
-                for value in get_routing_scope_values(scope, variable, self.schema):
+            # Widgets:
+            scope_label = ttk.Label(
+                parent_frame, text=get_routing_scope_label(scope, variable)
+            )
+
+            # Display widgets:
+            scope_label.grid(
+                row=row,
+                column=0,
+                columnspan=1 + len(target_ids),
+                sticky="w",
+                pady=(0, 2),
+            )
+
+            row += 1
+
+            for value in get_routing_scope_values(scope, variable, self.schema):
+                # Widgets:
+                value_label = ttk.Label(parent_frame, text=value)
+
+                # Display widgets:
+                value_label.grid(row=row, column=0, sticky="w", pady=2)
+
+                # A value with no box checked in its row is simply
+                # unassigned — no separate "unassigned" column needed.
+                owner_id = get_routing_condition_owner(
+                    self.model_data, entity_id, scope, variable, value
+                )
+
+                for column_index, target_id in enumerate(target_ids):
                     # Widgets:
-                    value_label = ttk.Label(entity_frame, text=value)
-
-                    # Display widgets:
-                    value_label.grid(row=row, column=0, sticky="w", pady=2)
-
-                    # A value with no box checked in its row is simply
-                    # unassigned — no separate "unassigned" column needed.
-                    owner_id = get_routing_condition_owner(
-                        self.model_data, entity_id, scope, variable, value
+                    checkbutton = ttk.Checkbutton(
+                        parent_frame,
+                        command=lambda entity_id=entity_id, scope=scope, variable=variable, value=value, target_id=target_id: (
+                            self.toggle_routing_condition_owner(
+                                entity_id, scope, variable, value, target_id
+                            )
+                        ),
                     )
 
-                    for column_index, target_id in enumerate(target_ids):
-                        # Widgets:
-                        checkbutton = ttk.Checkbutton(
-                            entity_frame,
-                            command=lambda entity_id=entity_id, scope=scope, variable=variable, value=value, target_id=target_id: (
-                                self.toggle_routing_condition_owner(
-                                    entity_id, scope, variable, value, target_id
-                                )
-                            ),
-                        )
+                    # A fresh Checkbutton defaults to "alternate" (a dash,
+                    # neither checked nor unchecked) regardless of
+                    # variable binding — clear it explicitly, or every box
+                    # looks the same and clicking looks like it does
+                    # nothing.
+                    if target_id == owner_id:
+                        checkbutton.state(["!alternate", "selected"])
+                    else:
+                        checkbutton.state(["!alternate", "!selected"])
 
-                        # A fresh Checkbutton defaults to "alternate" (a
-                        # dash, neither checked nor unchecked) regardless
-                        # of variable binding — clear it explicitly, or
-                        # every box looks the same and clicking looks like
-                        # it does nothing.
-                        if target_id == owner_id:
-                            checkbutton.state(["!alternate", "selected"])
-                        else:
-                            checkbutton.state(["!alternate", "!selected"])
+                    # Display widgets:
+                    checkbutton.grid(row=row, column=1 + column_index, pady=2)
 
-                        # Display widgets:
-                        checkbutton.grid(row=row, column=1 + column_index, pady=2)
-
-                    row += 1
+                row += 1
 
     def toggle_routing_condition_owner(self, entity_id, scope, variable, equals, target_id):
         # Checking a box makes that output the owner (taking it away from
@@ -2034,22 +2065,14 @@ class ModelEditorPage(ttk.Frame):
         self.refresh_rules_tab()
         self.update_model_changed_state()
 
-    def update_failure_frame(self):
-        # Clear existing widgets:
-        for widget in self.failure_frame.winfo_children():
-            widget.destroy()
-
-        entity_ids = get_failure_eligible_entity_ids(self.model_data, self.schema)
-
-        if not entity_ids:
-            no_entities_label = ttk.Label(
-                self.failure_frame,
-                text="No entities that support failure in this model yet.",
-            )
-            no_entities_label.grid(row=0, column=0, sticky="w")
-            return
-
-        rule_schema = self.schema.get_rule_schema(self.model_data["domain"], "Failure")
+    def render_rule_property_form(
+        self, parent_frame, entity_id, rule_type, get_parameter, set_parameter
+    ):
+        # Shared by Failure and Maintenance — both are just a flat list of
+        # numeric fields for one Entity, read from the same rule_schemas
+        # shape. Failure/Maintenance differ only in which rule_type they
+        # name and which get/set pair they read and write through.
+        rule_schema = self.schema.get_rule_schema(self.model_data["domain"], rule_type)
         fields = rule_schema["properties"] if rule_schema else {}
 
         # A fixed column 0 width (the longest field label here) keeps the
@@ -2059,208 +2082,77 @@ class ModelEditorPage(ttk.Frame):
         label_column_width = self.measure_column_width(
             [name.replace("_", " ").title() for name in fields], default_font
         )
+        parent_frame.columnconfigure(0, minsize=label_column_width)
+        parent_frame.columnconfigure(3, weight=1)
 
-        for entity_index, entity_id in enumerate(entity_ids):
-            # Widgets:
-            entity_frame = ttk.LabelFrame(
-                self.failure_frame,
-                text=f'AT "{self.get_entity_name(entity_id)}"',
-                style="DESE.Section.TLabelframe",
-                padding=PAD,
-            )
+        row = 0
 
-            # Grid:
-            entity_frame.columnconfigure(0, minsize=label_column_width)
-            entity_frame.columnconfigure(3, weight=1)
-
-            # Display widgets:
-            entity_frame.grid(row=entity_index, column=0, sticky="new")
-
-            row = 0
-
-            for field_index, (field_name, field_schema) in enumerate(fields.items()):
-                if field_index > 0:
-                    # Widgets:
-                    field_separator = ttk.Separator(entity_frame, orient="horizontal")
-
-                    # Display widgets:
-                    field_separator.grid(row=row, column=0, columnspan=4, sticky="ew")
-
-                    row += 1
-
+        for field_index, (field_name, field_schema) in enumerate(fields.items()):
+            if field_index > 0:
                 # Widgets:
-                validate_command = (self.register(validate_number), "%P")
-
-                description_label = ttk.Label(
-                    entity_frame, text=field_schema["description"]
-                )
-                field_label_widget = ttk.Label(
-                    entity_frame, text=field_name.replace("_", " ").title()
-                )
-                field_entry = ttk.Entry(
-                    entity_frame,
-                    width=INPUT_WIDTH,
-                    validate="key",
-                    validatecommand=validate_command,
-                )
-                field_unit_label = ttk.Label(
-                    entity_frame, text=field_schema.get("unit", "")
-                )
-
-                value = get_failure_parameter(self.model_data, entity_id, field_name)
-
-                if value is not None:
-                    field_entry.insert(0, str(value))
-
-                # Event binding:
-                field_entry.bind(
-                    "<FocusOut>",
-                    lambda event, entity_id=entity_id, field_name=field_name, entry=field_entry: (
-                        self.commit_failure_parameter(entity_id, field_name, entry)
-                    ),
-                )
-                field_entry.bind(
-                    "<Return>",
-                    lambda event, entity_id=entity_id, field_name=field_name, entry=field_entry: (
-                        self.commit_failure_parameter(entity_id, field_name, entry)
-                    ),
-                )
+                field_separator = ttk.Separator(parent_frame, orient="horizontal")
 
                 # Display widgets:
-                description_label.grid(row=row, column=0, columnspan=4, sticky="w")
-                row += 1
-                field_label_widget.grid(row=row, column=0, sticky="w")
-                field_entry.grid(row=row, column=1, sticky="w")
-                field_unit_label.grid(row=row, column=2, sticky="w")
+                field_separator.grid(row=row, column=0, columnspan=4, sticky="ew")
 
                 row += 1
 
-    def commit_failure_parameter(self, entity_id, field_name, entry):
+            # Widgets:
+            validate_command = (self.register(validate_number), "%P")
+
+            description_label = ttk.Label(parent_frame, text=field_schema["description"])
+            field_label_widget = ttk.Label(
+                parent_frame, text=field_name.replace("_", " ").title()
+            )
+            field_entry = ttk.Entry(
+                parent_frame,
+                width=INPUT_WIDTH,
+                validate="key",
+                validatecommand=validate_command,
+            )
+            field_unit_label = ttk.Label(parent_frame, text=field_schema.get("unit", ""))
+
+            value = get_parameter(self.model_data, entity_id, field_name)
+
+            if value is not None:
+                field_entry.insert(0, str(value))
+
+            # Event binding:
+            field_entry.bind(
+                "<FocusOut>",
+                lambda event, entity_id=entity_id, field_name=field_name, entry=field_entry, get_parameter=get_parameter, set_parameter=set_parameter: (
+                    self.commit_rule_parameter(
+                        entity_id, field_name, entry, get_parameter, set_parameter
+                    )
+                ),
+            )
+            field_entry.bind(
+                "<Return>",
+                lambda event, entity_id=entity_id, field_name=field_name, entry=field_entry, get_parameter=get_parameter, set_parameter=set_parameter: (
+                    self.commit_rule_parameter(
+                        entity_id, field_name, entry, get_parameter, set_parameter
+                    )
+                ),
+            )
+
+            # Display widgets:
+            description_label.grid(row=row, column=0, columnspan=4, sticky="w")
+            row += 1
+            field_label_widget.grid(row=row, column=0, sticky="w")
+            field_entry.grid(row=row, column=1, sticky="w")
+            field_unit_label.grid(row=row, column=2, sticky="w")
+
+            row += 1
+
+    def commit_rule_parameter(self, entity_id, field_name, entry, get_parameter, set_parameter):
         new_value = convert_property_value(entry.get(), NUMBER_PROPERTY_TYPE)
 
-        if get_failure_parameter(self.model_data, entity_id, field_name) != new_value:
-            set_failure_parameter(self.model_data, entity_id, field_name, new_value)
+        if get_parameter(self.model_data, entity_id, field_name) != new_value:
+            set_parameter(self.model_data, entity_id, field_name, new_value)
             self.update_model_changed_state()
 
         entry.delete(0, "end")
-        entry.insert(
-            0, str(get_failure_parameter(self.model_data, entity_id, field_name) or "")
-        )
-
-    def update_maintenance_frame(self):
-        self.update_maintenance_plan_frame()
-        self.update_maintenance_resource_frame()
-
-    def update_maintenance_plan_frame(self):
-        # Clear existing widgets:
-        for widget in self.maintenance_plan_frame.winfo_children():
-            widget.destroy()
-
-        entity_ids = get_failure_eligible_entity_ids(self.model_data, self.schema)
-
-        if not entity_ids:
-            no_entities_label = ttk.Label(
-                self.maintenance_plan_frame,
-                text="No entities that support failure in this model yet.",
-            )
-            no_entities_label.grid(row=0, column=0, sticky="w")
-            return
-
-        rule_schema = self.schema.get_rule_schema(self.model_data["domain"], "Maintenance")
-        fields = rule_schema["properties"] if rule_schema else {}
-
-        default_font = tkfont.nametofont("TkDefaultFont")
-        label_column_width = self.measure_column_width(
-            [name.replace("_", " ").title() for name in fields], default_font
-        )
-
-        for entity_index, entity_id in enumerate(entity_ids):
-            # Widgets:
-            entity_frame = ttk.LabelFrame(
-                self.maintenance_plan_frame,
-                text=f'AT "{self.get_entity_name(entity_id)}"',
-                style="DESE.Section.TLabelframe",
-                padding=PAD,
-            )
-
-            # Grid:
-            entity_frame.columnconfigure(0, minsize=label_column_width)
-            entity_frame.columnconfigure(3, weight=1)
-
-            # Display widgets:
-            entity_frame.grid(row=entity_index, column=0, sticky="new")
-
-            row = 0
-
-            for field_index, (field_name, field_schema) in enumerate(fields.items()):
-                if field_index > 0:
-                    # Widgets:
-                    field_separator = ttk.Separator(entity_frame, orient="horizontal")
-
-                    # Display widgets:
-                    field_separator.grid(row=row, column=0, columnspan=4, sticky="ew")
-
-                    row += 1
-
-                # Widgets:
-                validate_command = (self.register(validate_number), "%P")
-
-                description_label = ttk.Label(
-                    entity_frame, text=field_schema["description"]
-                )
-                field_label_widget = ttk.Label(
-                    entity_frame, text=field_name.replace("_", " ").title()
-                )
-                field_entry = ttk.Entry(
-                    entity_frame,
-                    width=INPUT_WIDTH,
-                    validate="key",
-                    validatecommand=validate_command,
-                )
-                field_unit_label = ttk.Label(
-                    entity_frame, text=field_schema.get("unit", "")
-                )
-
-                value = get_maintenance_parameter(self.model_data, entity_id, field_name)
-
-                if value is not None:
-                    field_entry.insert(0, str(value))
-
-                # Event binding:
-                field_entry.bind(
-                    "<FocusOut>",
-                    lambda event, entity_id=entity_id, field_name=field_name, entry=field_entry: (
-                        self.commit_maintenance_parameter(entity_id, field_name, entry)
-                    ),
-                )
-                field_entry.bind(
-                    "<Return>",
-                    lambda event, entity_id=entity_id, field_name=field_name, entry=field_entry: (
-                        self.commit_maintenance_parameter(entity_id, field_name, entry)
-                    ),
-                )
-
-                # Display widgets:
-                description_label.grid(row=row, column=0, columnspan=4, sticky="w")
-                row += 1
-                field_label_widget.grid(row=row, column=0, sticky="w")
-                field_entry.grid(row=row, column=1, sticky="w")
-                field_unit_label.grid(row=row, column=2, sticky="w")
-
-                row += 1
-
-    def commit_maintenance_parameter(self, entity_id, field_name, entry):
-        new_value = convert_property_value(entry.get(), NUMBER_PROPERTY_TYPE)
-
-        if get_maintenance_parameter(self.model_data, entity_id, field_name) != new_value:
-            set_maintenance_parameter(self.model_data, entity_id, field_name, new_value)
-            self.update_model_changed_state()
-
-        entry.delete(0, "end")
-        entry.insert(
-            0,
-            str(get_maintenance_parameter(self.model_data, entity_id, field_name) or ""),
-        )
+        entry.insert(0, str(get_parameter(self.model_data, entity_id, field_name) or ""))
 
     def update_maintenance_resource_frame(self):
         # Clear existing widgets:
