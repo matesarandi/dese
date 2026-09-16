@@ -109,11 +109,29 @@ def get_or_create_entity_rules(model_data, entity_id):
 
 
 def is_entity_rules_bundle_empty(bundle):
-    return (
-        not bundle.get("routing")
-        and not bundle.get("failure")
-        and not bundle.get("maintenance")
-    )
+    # "at" is the only key every bundle always has — routing/failure/
+    # maintenance/baseline_scrap (and any future rule) are only ever set
+    # with actual data in them (see get_or_create_entity_rules and the
+    # rule-specific setters), never left behind as an empty dict. So no
+    # keys beyond "at" means there's genuinely nothing left in it —
+    # checked structurally, not by listing each rule key by name, so a
+    # future rule type can't be forgotten here the way baseline_scrap
+    # was.
+    return set(bundle.keys()) <= {"at"}
+
+
+def get_rule_parameter(model_data, entity_id, rule_key, field_name):
+    bundle = find_entity_rules(model_data, entity_id)
+
+    if bundle is None:
+        return None
+
+    return bundle.get(rule_key, {}).get(field_name)
+
+
+def set_rule_parameter(model_data, entity_id, rule_key, field_name, value):
+    bundle = get_or_create_entity_rules(model_data, entity_id)
+    bundle.setdefault(rule_key, {})[field_name] = value
 
 
 def add_routing_condition(model_data, entity_id, target_id, scope, variable, equals):
@@ -321,17 +339,11 @@ def get_failure_eligible_entity_ids(model_data, schema):
 
 
 def get_failure_parameter(model_data, entity_id, field_name):
-    bundle = find_entity_rules(model_data, entity_id)
-
-    if bundle is None:
-        return None
-
-    return bundle.get("failure", {}).get(field_name)
+    return get_rule_parameter(model_data, entity_id, "failure", field_name)
 
 
 def set_failure_parameter(model_data, entity_id, field_name, value):
-    bundle = get_or_create_entity_rules(model_data, entity_id)
-    bundle.setdefault("failure", {})[field_name] = value
+    set_rule_parameter(model_data, entity_id, "failure", field_name, value)
 
 
 def produces_baseline_scrap(entity, model_data, schema):
@@ -354,31 +366,19 @@ def get_baseline_scrap_eligible_entity_ids(model_data, schema):
 
 
 def get_baseline_scrap_parameter(model_data, entity_id, field_name):
-    bundle = find_entity_rules(model_data, entity_id)
-
-    if bundle is None:
-        return None
-
-    return bundle.get("baseline_scrap", {}).get(field_name)
+    return get_rule_parameter(model_data, entity_id, "baseline_scrap", field_name)
 
 
 def set_baseline_scrap_parameter(model_data, entity_id, field_name, value):
-    bundle = get_or_create_entity_rules(model_data, entity_id)
-    bundle.setdefault("baseline_scrap", {})[field_name] = value
+    set_rule_parameter(model_data, entity_id, "baseline_scrap", field_name, value)
 
 
 def get_maintenance_parameter(model_data, entity_id, field_name):
-    bundle = find_entity_rules(model_data, entity_id)
-
-    if bundle is None:
-        return None
-
-    return bundle.get("maintenance", {}).get(field_name)
+    return get_rule_parameter(model_data, entity_id, "maintenance", field_name)
 
 
 def set_maintenance_parameter(model_data, entity_id, field_name, value):
-    bundle = get_or_create_entity_rules(model_data, entity_id)
-    bundle.setdefault("maintenance", {})[field_name] = value
+    set_rule_parameter(model_data, entity_id, "maintenance", field_name, value)
 
 
 def find_maintenance_resource_rule(model_data):
