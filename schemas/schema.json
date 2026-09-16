@@ -131,7 +131,8 @@
             "position": "center"
           },
           "rule_eligibility": {
-            "supports_failure": true
+            "supports_failure": true,
+            "produces_flow_object_states": ["quality"]
           },
           "properties": {
             "processing_time": {
@@ -143,6 +144,11 @@
               "type": "number",
               "unit": "piece",
               "description": "Maximum number of Flow Objects processed at once."
+            },
+            "changeover_time": {
+              "type": "number",
+              "unit": "s",
+              "description": "Extra time added when switching to a different Flow Object type."
             }
           }
         },
@@ -337,6 +343,18 @@
               "type": "number",
               "unit": "s",
               "description": "Time required for planned maintenance."
+            }
+          }
+        },
+        "BaselineScrap": {
+          "properties": {
+            "base_scrap_probability": {
+              "type": "number",
+              "description": "\"Fresh\" (just maintained or repaired) per-cycle probability that a Flow Object becomes scrap from ordinary process variation, independent of any Entity failure."
+            },
+            "added_scrap_probability_per_cycle": {
+              "type": "number",
+              "description": "Additional scrap probability accrued for each cycle since the last maintenance or repair."
             }
           }
         },

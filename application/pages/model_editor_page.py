@@ -23,6 +23,8 @@ from dese.constants import (
 )
 from dese.core.model import (
     find_decision_points,
+    get_baseline_scrap_eligible_entity_ids,
+    get_baseline_scrap_parameter,
     get_failure_eligible_entity_ids,
     get_failure_parameter,
     get_maintenance_dispatch_priority,
@@ -35,6 +37,7 @@ from dese.core.model import (
     get_routing_target_ids,
     move_routing_rule_output,
     remove_entity_from_rules,
+    set_baseline_scrap_parameter,
     set_failure_parameter,
     set_maintenance_dispatch_priority,
     set_maintenance_parameter,
@@ -1791,21 +1794,27 @@ class ModelEditorPage(ttk.Frame):
 
         # An Entity gets an "AT ..." block if it's a decision point
         # (Routing applies), failure-eligible (Failure/Maintenance apply),
-        # or both — whichever sections are relevant appear nested inside
-        # that one shared block, instead of three separate top-level
+        # baseline-scrap-eligible (BaselineScrap applies), or any
+        # combination — whichever sections are relevant appear nested
+        # inside that one shared block, instead of separate top-level
         # sections each repeating the same Entity list.
         decision_point_ids = set(find_decision_points(self.model_data, self.schema))
         failure_eligible_ids = set(get_failure_eligible_entity_ids(self.model_data, self.schema))
+        baseline_scrap_eligible_ids = set(
+            get_baseline_scrap_eligible_entity_ids(self.model_data, self.schema)
+        )
         relevant_entity_ids = [
             entity["id"]
             for entity in self.model_data["entities"]
-            if entity["id"] in decision_point_ids or entity["id"] in failure_eligible_ids
+            if entity["id"] in decision_point_ids
+            or entity["id"] in failure_eligible_ids
+            or entity["id"] in baseline_scrap_eligible_ids
         ]
 
         if not relevant_entity_ids:
             no_rules_label = ttk.Label(
                 self.entity_rules_frame,
-                text="No entities with Routing, Failure, or Maintenance rules in this model yet.",
+                text="No entities with Routing, Failure, Maintenance, or Baseline Scrap rules in this model yet.",
             )
             no_rules_label.grid(row=0, column=0, sticky="w")
             return
@@ -1818,7 +1827,7 @@ class ModelEditorPage(ttk.Frame):
             # Widgets:
             entity_frame = ttk.LabelFrame(
                 self.entity_rules_frame,
-                text=f'AT "{self.get_entity_name(entity_id)}"',
+                text=f'AT "{self.get_entity_name(entity_id)}" ({entity["type"]})',
                 style="DESE.Section.TLabelframe",
                 padding=PAD,
             )
@@ -1880,6 +1889,27 @@ class ModelEditorPage(ttk.Frame):
 
                 # Display widgets:
                 maintenance_frame.grid(row=row, column=0, sticky="new")
+
+                row += 1
+
+            if entity_id in baseline_scrap_eligible_ids:
+                # Widgets:
+                baseline_scrap_frame = ttk.LabelFrame(
+                    entity_frame,
+                    text="Baseline Scrap",
+                    style="DESE.Section.TLabelframe",
+                    padding=PAD,
+                )
+                self.render_rule_property_form(
+                    baseline_scrap_frame,
+                    entity_id,
+                    "BaselineScrap",
+                    get_baseline_scrap_parameter,
+                    set_baseline_scrap_parameter,
+                )
+
+                # Display widgets:
+                baseline_scrap_frame.grid(row=row, column=0, sticky="new")
 
                 row += 1
 

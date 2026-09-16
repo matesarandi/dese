@@ -334,6 +334,39 @@ def set_failure_parameter(model_data, entity_id, field_name, value):
     bundle.setdefault("failure", {})[field_name] = value
 
 
+def produces_baseline_scrap(entity, model_data, schema):
+    entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
+
+    if entity_schema is None:
+        return False
+
+    return "quality" in entity_schema.get("rule_eligibility", {}).get(
+        "produces_flow_object_states", []
+    )
+
+
+def get_baseline_scrap_eligible_entity_ids(model_data, schema):
+    return [
+        entity["id"]
+        for entity in model_data["entities"]
+        if produces_baseline_scrap(entity, model_data, schema)
+    ]
+
+
+def get_baseline_scrap_parameter(model_data, entity_id, field_name):
+    bundle = find_entity_rules(model_data, entity_id)
+
+    if bundle is None:
+        return None
+
+    return bundle.get("baseline_scrap", {}).get(field_name)
+
+
+def set_baseline_scrap_parameter(model_data, entity_id, field_name, value):
+    bundle = get_or_create_entity_rules(model_data, entity_id)
+    bundle.setdefault("baseline_scrap", {})[field_name] = value
+
+
 def get_maintenance_parameter(model_data, entity_id, field_name):
     bundle = find_entity_rules(model_data, entity_id)
 
