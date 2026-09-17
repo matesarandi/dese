@@ -46,46 +46,31 @@ def get_main_entity_output_relationships(entity_id, model_data, schema):
     ]
 
 
-def has_available_output(entity_id, model_data, schema, relationship_id=None):
+def has_available_relationship_slot(
+    entity_id, model_data, schema, direction, relationship_id=None
+):
     entity = next(
         entity for entity in model_data["entities"] if entity["id"] == entity_id
     )
 
     entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
 
-    output_relationships = [
+    relationship_field = "source" if direction == "output" else "target"
+
+    existing_relationships = [
         relationship
         for relationship in model_data["relationships"]
         if (
-            relationship["source"] == entity_id
+            relationship[relationship_field] == entity_id
             and relationship["id"] != relationship_id
         )
     ]
 
-    return len(output_relationships) < entity_schema["output_max"]
+    return len(existing_relationships) < entity_schema[f"{direction}_max"]
 
 
-def has_available_input(entity_id, model_data, schema, relationship_id=None):
-    entity = next(
-        entity for entity in model_data["entities"] if entity["id"] == entity_id
-    )
-
-    entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
-
-    input_relationships = [
-        relationship
-        for relationship in model_data["relationships"]
-        if (
-            relationship["target"] == entity_id
-            and relationship["id"] != relationship_id
-        )
-    ]
-
-    return len(input_relationships) < entity_schema["input_max"]
-
-
-def get_allowed_input_entities(
-    selected_entity, model_data, schema, relationship_id=None
+def get_allowed_entities(
+    selected_entity, model_data, schema, direction, relationship_id=None
 ):
     # A beginning-of-process entity marks the single entry point of the main
     # process chain, so it may not receive an input from another main entity;
@@ -97,25 +82,34 @@ def get_allowed_input_entities(
     domain = schema.get_domain(model_data["domain"])
     relationship_allowances = domain["relationship_allowances"]
 
-    allowed_source_types = [
-        source_type
-        for source_type, target_types in relationship_allowances.items()
-        if selected_type in target_types
-    ]
+    if direction == "input":
+        allowed_types = [
+            source_type
+            for source_type, target_types in relationship_allowances.items()
+            if selected_type in target_types
+        ]
+        selected_boundary_flag = "beginning_of_process"
+        candidate_boundary_flag = "end_of_process"
+        opposite_direction = "output"
+    else:
+        allowed_types = relationship_allowances.get(selected_type, [])
+        selected_boundary_flag = "end_of_process"
+        candidate_boundary_flag = "beginning_of_process"
+        opposite_direction = "input"
 
     return [
         entity
         for entity in model_data["entities"]
         if (
-            entity["type"] in allowed_source_types
+            entity["type"] in allowed_types
             and entity["id"] != selected_entity_id
             and not (
-                selected_entity.get("beginning_of_process")
+                selected_entity.get(selected_boundary_flag)
                 and is_main_entity(entity, model_data, schema)
             )
             and not (
                 is_main_entity(selected_entity, model_data, schema)
-                and entity.get("end_of_process")
+                and entity.get(candidate_boundary_flag)
             )
             and not any(
                 (
@@ -131,51 +125,9 @@ def get_allowed_input_entities(
                 and relationship["id"] != relationship_id
                 for relationship in model_data["relationships"]
             )
-            and has_available_output(entity["id"], model_data, schema, relationship_id)
-        )
-    ]
-
-
-def get_allowed_output_entities(
-    selected_entity, model_data, schema, relationship_id=None
-):
-    selected_type = selected_entity["type"]
-    selected_entity_id = selected_entity["id"]
-
-    domain = schema.get_domain(model_data["domain"])
-    relationship_allowances = domain["relationship_allowances"]
-
-    allowed_target_types = relationship_allowances.get(selected_type, [])
-
-    return [
-        entity
-        for entity in model_data["entities"]
-        if (
-            entity["type"] in allowed_target_types
-            and entity["id"] != selected_entity_id
-            and not (
-                selected_entity.get("end_of_process")
-                and is_main_entity(entity, model_data, schema)
+            and has_available_relationship_slot(
+                entity["id"], model_data, schema, opposite_direction, relationship_id
             )
-            and not (
-                is_main_entity(selected_entity, model_data, schema)
-                and entity.get("beginning_of_process")
-            )
-            and not any(
-                (
-                    (
-                        relationship["source"] == selected_entity_id
-                        and relationship["target"] == entity["id"]
-                    )
-                    or (
-                        relationship["source"] == entity["id"]
-                        and relationship["target"] == selected_entity_id
-                    )
-                )
-                and relationship["id"] != relationship_id
-                for relationship in model_data["relationships"]
-            )
-            and has_available_input(entity["id"], model_data, schema, relationship_id)
         )
     ]
 

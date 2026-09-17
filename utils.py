@@ -1,5 +1,7 @@
 import sys
 
+from dese.constants import NUMBER_PROPERTY_TYPE
+
 
 def validate_number(value):
     if value == "":
@@ -14,13 +16,16 @@ def validate_number(value):
 
 
 def convert_property_value(value, property_type):
-    if property_type == "number" and value != "":
+    if property_type == NUMBER_PROPERTY_TYPE and value != "":
         return float(value)
 
     return value
 
 
 def generate_id(existing_ids, prefix):
+    # The 3-digit zero-padding is a display convention (keeps IDs a tidy,
+    # fixed width in the UI), not a hard limit — past 999, numbers simply
+    # grow to 4+ digits instead of raising an error.
     number = 1
 
     while f"{prefix}{number:03d}" in existing_ids:

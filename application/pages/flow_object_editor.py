@@ -9,6 +9,7 @@ from dese.constants import (
     INPUT_WIDTH,
     NUMBER_PROPERTY_TYPE,
     PAD,
+    PROPERTY_ROW_HEIGHT,
 )
 from dese.utils import bind_canvas_mousewheel, convert_property_value, validate_number
 
@@ -336,7 +337,7 @@ class FlowObjectEditor:
             entry.grid(row=row + 1, column=1, sticky="w")
             unit_label.grid(row=row + 1, column=2, sticky="w")
 
-            row += 3
+            row += PROPERTY_ROW_HEIGHT
 
         # Process Requirements
         # ==========================
