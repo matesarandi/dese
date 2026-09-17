@@ -1,4 +1,32 @@
-from dese.constants import END_OF_PROCESS_ROUTING_TARGET, MAIN_HIERARCHY_ROLE
+import json
+
+from dese.constants import (
+    CURRENT_SCHEMA_VERSION,
+    END_OF_PROCESS_ROUTING_TARGET,
+    MAIN_HIERARCHY_ROLE,
+)
+
+
+def load_model_data(model_path, schema):
+    # Headless (Tkinter-independent) so a future Simulation Engine can load
+    # and validate a model file the same way the editor does, without
+    # needing to duplicate this logic or start a UI.
+    with open(model_path, "r") as file:
+        model_data = json.load(file)
+
+    if model_data.get("schema_version") != CURRENT_SCHEMA_VERSION:
+        raise ValueError(
+            "This model was created with an older or incompatible "
+            "schema version and cannot be opened."
+        )
+
+    # There is no domain selector anymore — every model uses the schema's
+    # default (Production) domain. Fall back to it for any model file that
+    # predates this default (its "domain" is null).
+    if not model_data.get("domain"):
+        model_data["domain"] = schema.get_domains()[0]
+
+    return model_data
 
 
 def is_main_entity(entity, model_data, schema):
@@ -8,6 +36,26 @@ def is_main_entity(entity, model_data, schema):
         return False
 
     return entity_schema["hierarchy"]["role"] == MAIN_HIERARCHY_ROLE
+
+
+def accepts_flow_object_entry(entity, model_data, schema):
+    entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
+
+    if entity_schema is None:
+        return False
+
+    return entity_schema.get("simulation_role", {}).get(
+        "accepts_flow_object_entry", False
+    )
+
+
+def is_supply_source(entity, model_data, schema):
+    entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
+
+    if entity_schema is None:
+        return False
+
+    return entity_schema.get("simulation_role", {}).get("is_supply_source", False)
 
 
 def get_output_relationships(entity_id, model_data):

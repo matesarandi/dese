@@ -72,14 +72,9 @@ NUMBER_PROPERTY_TYPE = "number"
 # Entity hierarchy role recognized by SchemaLoader-provided entity schemas.
 MAIN_HIERARCHY_ROLE = "main"
 
-# Entity types with simulation-specific behaviour in the Flow Object editor.
-ENTITY_TYPE_PROCESSING = "Processing"
-
-ENTITY_TYPE_PROCESS_SUPPLY = "Process Supply"
-
 # Routing output target for the virtual "End of Process" destination an
 # end_of_process Entity gets, alongside any real output relationships — not
 # a real Entity id (those are always "E001" etc.), so it can never collide.
 # Its display label is derived from this same field name, not a separate
-# hardcoded string — see ModelEditorPage.get_routing_target_label.
+# hardcoded string — see RulesTabMixin.get_routing_target_label.
 END_OF_PROCESS_ROUTING_TARGET = "end_of_process"

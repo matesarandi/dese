@@ -3,14 +3,13 @@ from tkinter import messagebox, ttk
 
 from dese.constants import (
     BUTTON_WIDTH,
-    ENTITY_TYPE_PROCESSING,
-    ENTITY_TYPE_PROCESS_SUPPLY,
     FLOW_OBJECT_WINDOW_SIZE,
     INPUT_WIDTH,
     NUMBER_PROPERTY_TYPE,
     PAD,
     PROPERTY_ROW_HEIGHT,
 )
+from dese.core.model import accepts_flow_object_entry, is_supply_source
 from dese.utils import bind_canvas_mousewheel, convert_property_value, validate_number
 
 
@@ -144,7 +143,7 @@ class FlowObjectEditor:
         return [
             entity
             for entity in self.model_data["entities"]
-            if entity["type"] == ENTITY_TYPE_PROCESSING
+            if accepts_flow_object_entry(entity, self.model_data, self.schema)
         ]
 
     def display_flow_object_properties(self, flow_object):
@@ -432,7 +431,7 @@ class FlowObjectEditor:
                         if entity["id"] == relationship["source"]
                     )
 
-                    if process_supply_entity["type"] == ENTITY_TYPE_PROCESS_SUPPLY:
+                    if is_supply_source(process_supply_entity, self.model_data, self.schema):
                         process_supply_relationships.append(relationship)
 
                 if not process_supply_relationships:

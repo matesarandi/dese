@@ -130,6 +130,9 @@
             "role": "main",
             "position": "center"
           },
+          "simulation_role": {
+            "accepts_flow_object_entry": true
+          },
           "rule_eligibility": {
             "supports_failure": true,
             "produces_flow_object_states": ["quality"]
@@ -246,6 +249,9 @@
           "hierarchy": {
             "role": "secondary",
             "position": "above"
+          },
+          "simulation_role": {
+            "is_supply_source": true
           },
           "properties": {
             "capacity": {

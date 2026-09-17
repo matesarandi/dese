@@ -6,13 +6,14 @@ from tkinter import messagebox, ttk
 from dese.application.pages.flow_object_editor import FlowObjectEditor
 from dese.application.pages.rules_tab_mixin import RulesTabMixin
 from dese.application.pages.structure_tab_mixin import StructureTabMixin
-from dese.constants import BUTTON_WIDTH, CURRENT_SCHEMA_VERSION, INPUT_WIDTH, PAD
+from dese.constants import BUTTON_WIDTH, INPUT_WIDTH, PAD
 from dese.core.model import (
     get_input_relationships,
     get_main_entity_input_relationships,
     get_main_entity_output_relationships,
     get_output_relationships,
     is_main_entity,
+    load_model_data,
     move_routing_rule_output,
     remove_entity_from_rules,
 )
@@ -407,21 +408,7 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
 
     def load_model(self):
         try:
-            with open(self.model_path, "r") as file:
-                self.model_data = json.load(file)
-
-            if self.model_data.get("schema_version") != CURRENT_SCHEMA_VERSION:
-                raise ValueError(
-                    "This model was created with an older or incompatible "
-                    "schema version and cannot be opened."
-                )
-
-            # There is no domain selector anymore — every model uses the
-            # schema's default (Production) domain. Fall back to it for any
-            # model file that predates this default (its "domain" is null).
-            if not self.model_data.get("domain"):
-                self.model_data["domain"] = self.schema.get_domains()[0]
-
+            self.model_data = load_model_data(self.model_path, self.schema)
             self.saved_model_data = copy.deepcopy(self.model_data)
 
         except Exception as error:
