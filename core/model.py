@@ -18,6 +18,168 @@ def get_output_relationships(entity_id, model_data):
     ]
 
 
+def get_input_relationships(entity_id, model_data):
+    return [
+        relationship
+        for relationship in model_data["relationships"]
+        if relationship["target"] == entity_id
+    ]
+
+
+def get_main_entity_input_relationships(entity_id, model_data, schema):
+    entities_by_id = {entity["id"]: entity for entity in model_data["entities"]}
+
+    return [
+        relationship
+        for relationship in get_input_relationships(entity_id, model_data)
+        if is_main_entity(entities_by_id[relationship["source"]], model_data, schema)
+    ]
+
+
+def get_main_entity_output_relationships(entity_id, model_data, schema):
+    entities_by_id = {entity["id"]: entity for entity in model_data["entities"]}
+
+    return [
+        relationship
+        for relationship in get_output_relationships(entity_id, model_data)
+        if is_main_entity(entities_by_id[relationship["target"]], model_data, schema)
+    ]
+
+
+def has_available_output(entity_id, model_data, schema, relationship_id=None):
+    entity = next(
+        entity for entity in model_data["entities"] if entity["id"] == entity_id
+    )
+
+    entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
+
+    output_relationships = [
+        relationship
+        for relationship in model_data["relationships"]
+        if (
+            relationship["source"] == entity_id
+            and relationship["id"] != relationship_id
+        )
+    ]
+
+    return len(output_relationships) < entity_schema["output_max"]
+
+
+def has_available_input(entity_id, model_data, schema, relationship_id=None):
+    entity = next(
+        entity for entity in model_data["entities"] if entity["id"] == entity_id
+    )
+
+    entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
+
+    input_relationships = [
+        relationship
+        for relationship in model_data["relationships"]
+        if (
+            relationship["target"] == entity_id
+            and relationship["id"] != relationship_id
+        )
+    ]
+
+    return len(input_relationships) < entity_schema["input_max"]
+
+
+def get_allowed_input_entities(
+    selected_entity, model_data, schema, relationship_id=None
+):
+    # A beginning-of-process entity marks the single entry point of the main
+    # process chain, so it may not receive an input from another main entity;
+    # symmetrically, an end-of-process entity may not feed a main entity as
+    # output. This keeps exactly one entry/exit point per process.
+    selected_type = selected_entity["type"]
+    selected_entity_id = selected_entity["id"]
+
+    domain = schema.get_domain(model_data["domain"])
+    relationship_allowances = domain["relationship_allowances"]
+
+    allowed_source_types = [
+        source_type
+        for source_type, target_types in relationship_allowances.items()
+        if selected_type in target_types
+    ]
+
+    return [
+        entity
+        for entity in model_data["entities"]
+        if (
+            entity["type"] in allowed_source_types
+            and entity["id"] != selected_entity_id
+            and not (
+                selected_entity.get("beginning_of_process")
+                and is_main_entity(entity, model_data, schema)
+            )
+            and not (
+                is_main_entity(selected_entity, model_data, schema)
+                and entity.get("end_of_process")
+            )
+            and not any(
+                (
+                    (
+                        relationship["source"] == entity["id"]
+                        and relationship["target"] == selected_entity_id
+                    )
+                    or (
+                        relationship["source"] == selected_entity_id
+                        and relationship["target"] == entity["id"]
+                    )
+                )
+                and relationship["id"] != relationship_id
+                for relationship in model_data["relationships"]
+            )
+            and has_available_output(entity["id"], model_data, schema, relationship_id)
+        )
+    ]
+
+
+def get_allowed_output_entities(
+    selected_entity, model_data, schema, relationship_id=None
+):
+    selected_type = selected_entity["type"]
+    selected_entity_id = selected_entity["id"]
+
+    domain = schema.get_domain(model_data["domain"])
+    relationship_allowances = domain["relationship_allowances"]
+
+    allowed_target_types = relationship_allowances.get(selected_type, [])
+
+    return [
+        entity
+        for entity in model_data["entities"]
+        if (
+            entity["type"] in allowed_target_types
+            and entity["id"] != selected_entity_id
+            and not (
+                selected_entity.get("end_of_process")
+                and is_main_entity(entity, model_data, schema)
+            )
+            and not (
+                is_main_entity(selected_entity, model_data, schema)
+                and entity.get("beginning_of_process")
+            )
+            and not any(
+                (
+                    (
+                        relationship["source"] == selected_entity_id
+                        and relationship["target"] == entity["id"]
+                    )
+                    or (
+                        relationship["source"] == entity["id"]
+                        and relationship["target"] == selected_entity_id
+                    )
+                )
+                and relationship["id"] != relationship_id
+                for relationship in model_data["relationships"]
+            )
+            and has_available_input(entity["id"], model_data, schema, relationship_id)
+        )
+    ]
+
+
 def get_routing_target_ids(entity, model_data):
     # The set of possible Routing destinations for this Entity: every real
     # output relationship, plus the virtual END_OF_PROCESS_ROUTING_TARGET

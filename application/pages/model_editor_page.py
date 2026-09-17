@@ -15,7 +15,6 @@ from dese.constants import (
     ENTITY_OUTPUTS_COLUMN_WIDTH,
     ENTITY_ROLE_COLUMN_WIDTH,
     INPUT_WIDTH,
-    MAIN_HIERARCHY_ROLE,
     NUMBER_PROPERTY_TYPE,
     PAD,
     PROPERTY_ROW_HEIGHT,
@@ -23,18 +22,25 @@ from dese.constants import (
 )
 from dese.core.model import (
     find_decision_points,
+    get_allowed_input_entities,
+    get_allowed_output_entities,
     get_baseline_scrap_eligible_entity_ids,
     get_baseline_scrap_parameter,
     get_failure_eligible_entity_ids,
     get_failure_parameter,
+    get_input_relationships,
+    get_main_entity_input_relationships,
+    get_main_entity_output_relationships,
     get_maintenance_dispatch_priority,
     get_maintenance_parameter,
     get_maintenance_resource_parameter,
+    get_output_relationships,
     get_routing_condition_owner,
     get_routing_scope_candidates,
     get_routing_scope_label,
     get_routing_scope_values,
     get_routing_target_ids,
+    is_main_entity,
     move_routing_rule_output,
     remove_entity_from_rules,
     set_baseline_scrap_parameter,
@@ -71,6 +77,8 @@ class ModelEditorPage(ttk.Frame):
         self.output_comboboxes = []
         self.input_relationship_ids = []
         self.output_relationship_ids = []
+        self.add_entity_window = None
+        self.flow_object_editor = None
         self.load_model()
 
         if self.model_data is not None:
@@ -149,18 +157,16 @@ class ModelEditorPage(ttk.Frame):
         # that mutate model_data in place.
         self.model_changed_callback(self.model_data != self.saved_model_data)
 
-    def is_main_entity(self, entity):
-        entity_schema = self.schema.get_entity_schema(
-            self.model_data["domain"], entity["type"]
-        )
-
-        if entity_schema is None:
-            return False
-
-        return entity_schema["hierarchy"]["role"] == MAIN_HIERARCHY_ROLE
-
     def open_flow_object_editor(self):
-        FlowObjectEditor(
+        if (
+            self.flow_object_editor is not None
+            and self.flow_object_editor.window.winfo_exists()
+        ):
+            self.flow_object_editor.window.lift()
+            self.flow_object_editor.window.focus_set()
+            return
+
+        self.flow_object_editor = FlowObjectEditor(
             self,
             self.model_data,
             self.schema,
@@ -217,8 +223,8 @@ class ModelEditorPage(ttk.Frame):
                     state="disabled", text=f"Selected: {beginning_entity['name']}"
                 )
 
-        elif self.selected_entity is not None and not self.is_main_entity(
-            self.selected_entity
+        elif self.selected_entity is not None and not is_main_entity(
+            self.selected_entity, self.model_data, self.schema
         ):
             self.beginning_of_process_checkbutton.config(
                 state="disabled", text="Only main entities can be selected."
@@ -241,8 +247,8 @@ class ModelEditorPage(ttk.Frame):
                     state="disabled", text=f"Selected: {end_entity['name']}"
                 )
 
-        elif self.selected_entity is not None and not self.is_main_entity(
-            self.selected_entity
+        elif self.selected_entity is not None and not is_main_entity(
+            self.selected_entity, self.model_data, self.schema
         ):
             self.end_of_process_checkbutton.config(
                 state="disabled", text="Only main entities can be selected."
@@ -258,6 +264,11 @@ class ModelEditorPage(ttk.Frame):
     # ==========================
 
     def add_entity(self):
+        if self.add_entity_window is not None and self.add_entity_window.winfo_exists():
+            self.add_entity_window.lift()
+            self.add_entity_window.focus_set()
+            return
+
         # Window:
         self.add_entity_window = tk.Toplevel(self)
         self.add_entity_window.title("Add Entity")
@@ -608,140 +619,6 @@ class ModelEditorPage(ttk.Frame):
 
         bind_canvas_mousewheel(self.relationship_canvas)
 
-    def has_available_output(self, entity_id, relationship_id=None):
-        entity = next(
-            entity
-            for entity in self.model_data["entities"]
-            if entity["id"] == entity_id
-        )
-
-        entity_schema = self.schema.get_entity_schema(
-            self.model_data["domain"], entity["type"]
-        )
-
-        output_relationships = [
-            relationship
-            for relationship in self.model_data["relationships"]
-            if (
-                relationship["source"] == entity_id
-                and relationship["id"] != relationship_id
-            )
-        ]
-
-        return len(output_relationships) < entity_schema["output_max"]
-
-    def has_available_input(self, entity_id, relationship_id=None):
-        entity = next(
-            entity
-            for entity in self.model_data["entities"]
-            if entity["id"] == entity_id
-        )
-
-        entity_schema = self.schema.get_entity_schema(
-            self.model_data["domain"], entity["type"]
-        )
-
-        input_relationships = [
-            relationship
-            for relationship in self.model_data["relationships"]
-            if (
-                relationship["target"] == entity_id
-                and relationship["id"] != relationship_id
-            )
-        ]
-
-        return len(input_relationships) < entity_schema["input_max"]
-
-    def get_allowed_input_entities(self, relationship_id=None):
-        # A beginning-of-process entity marks the single entry point of the main
-        # process chain, so it may not receive an input from another main entity;
-        # symmetrically, an end-of-process entity may not feed a main entity as
-        # output. This keeps exactly one entry/exit point per process.
-        selected_type = self.selected_entity["type"]
-        selected_entity_id = self.selected_entity["id"]
-
-        domain = self.schema.get_domain(self.model_data["domain"])
-        relationship_allowances = domain["relationship_allowances"]
-
-        allowed_source_types = [
-            source_type
-            for source_type, target_types in relationship_allowances.items()
-            if selected_type in target_types
-        ]
-
-        return [
-            entity
-            for entity in self.model_data["entities"]
-            if (
-                entity["type"] in allowed_source_types
-                and entity["id"] != selected_entity_id
-                and not (
-                    self.selected_entity.get("beginning_of_process")
-                    and self.is_main_entity(entity)
-                )
-                and not (
-                    self.is_main_entity(self.selected_entity)
-                    and entity.get("end_of_process")
-                )
-                and not any(
-                    (
-                        (
-                            relationship["source"] == entity["id"]
-                            and relationship["target"] == selected_entity_id
-                        )
-                        or (
-                            relationship["source"] == selected_entity_id
-                            and relationship["target"] == entity["id"]
-                        )
-                    )
-                    and relationship["id"] != relationship_id
-                    for relationship in self.model_data["relationships"]
-                )
-                and self.has_available_output(entity["id"], relationship_id)
-            )
-        ]
-
-    def get_allowed_output_entities(self, relationship_id=None):
-        selected_type = self.selected_entity["type"]
-        selected_entity_id = self.selected_entity["id"]
-
-        domain = self.schema.get_domain(self.model_data["domain"])
-        relationship_allowances = domain["relationship_allowances"]
-
-        allowed_target_types = relationship_allowances.get(selected_type, [])
-
-        return [
-            entity
-            for entity in self.model_data["entities"]
-            if (
-                entity["type"] in allowed_target_types
-                and entity["id"] != selected_entity_id
-                and not (
-                    self.selected_entity.get("end_of_process")
-                    and self.is_main_entity(entity)
-                )
-                and not (
-                    self.is_main_entity(self.selected_entity)
-                    and entity.get("beginning_of_process")
-                )
-                and not any(
-                    (
-                        (
-                            relationship["source"] == selected_entity_id
-                            and relationship["target"] == entity["id"]
-                        )
-                        or (
-                            relationship["source"] == entity["id"]
-                            and relationship["target"] == selected_entity_id
-                        )
-                    )
-                    and relationship["id"] != relationship_id
-                    for relationship in self.model_data["relationships"]
-                )
-                and self.has_available_input(entity["id"], relationship_id)
-            )
-        ]
-
     def update_relationship_inputs(self):
         # Clear existing input widgets:
         for widget in self.input_list_frame.winfo_children():
@@ -789,7 +666,9 @@ class ModelEditorPage(ttk.Frame):
                 relationship_id = None
                 self.input_relationship_ids.append(None)
 
-            allowed_entities = self.get_allowed_input_entities(relationship_id)
+            allowed_entities = get_allowed_input_entities(
+                self.selected_entity, self.model_data, self.schema, relationship_id
+            )
             combobox["values"] = [""] + [entity["name"] for entity in allowed_entities]
 
             # Event binding:
@@ -845,7 +724,9 @@ class ModelEditorPage(ttk.Frame):
                 relationship_id = None
                 self.output_relationship_ids.append(None)
 
-            allowed_entities = self.get_allowed_output_entities(relationship_id)
+            allowed_entities = get_allowed_output_entities(
+                self.selected_entity, self.model_data, self.schema, relationship_id
+            )
             combobox["values"] = [""] + [entity["name"] for entity in allowed_entities]
 
             # Event binding:
@@ -920,7 +801,7 @@ class ModelEditorPage(ttk.Frame):
 
             inputs = ", ".join(input_names)
             outputs = ", ".join(output_names)
-            is_main = self.is_main_entity(entity)
+            is_main = is_main_entity(entity, self.model_data, self.schema)
             role = "Main" if is_main else "Secondary"
 
             self.entity_table.insert(
@@ -967,17 +848,9 @@ class ModelEditorPage(ttk.Frame):
         end = self.end_of_process_variable.get()
 
         if beginning:
-            input_relationships = [
-                relationship
-                for relationship in self.get_input_relationships()
-                if self.is_main_entity(
-                    next(
-                        entity
-                        for entity in self.model_data["entities"]
-                        if entity["id"] == relationship["source"]
-                    )
-                )
-            ]
+            input_relationships = get_main_entity_input_relationships(
+                self.selected_entity["id"], self.model_data, self.schema
+            )
 
             if input_relationships:
                 input_descriptions = []
@@ -1004,17 +877,9 @@ class ModelEditorPage(ttk.Frame):
             self.selected_entity.pop("beginning_of_process", None)
 
         if end:
-            output_relationships = [
-                relationship
-                for relationship in self.get_output_relationships()
-                if self.is_main_entity(
-                    next(
-                        entity
-                        for entity in self.model_data["entities"]
-                        if entity["id"] == relationship["target"]
-                    )
-                )
-            ]
+            output_relationships = get_main_entity_output_relationships(
+                self.selected_entity["id"], self.model_data, self.schema
+            )
 
             if output_relationships:
                 output_descriptions = []
@@ -1094,25 +959,13 @@ class ModelEditorPage(ttk.Frame):
         if self.selected_entity is None:
             return []
 
-        entity_id = self.selected_entity["id"]
-
-        return [
-            relationship
-            for relationship in self.model_data["relationships"]
-            if relationship["target"] == entity_id
-        ]
+        return get_input_relationships(self.selected_entity["id"], self.model_data)
 
     def get_output_relationships(self):
         if self.selected_entity is None:
             return []
 
-        entity_id = self.selected_entity["id"]
-
-        return [
-            relationship
-            for relationship in self.model_data["relationships"]
-            if relationship["source"] == entity_id
-        ]
+        return get_output_relationships(self.selected_entity["id"], self.model_data)
 
     def update_entity_name(self, event=None):
         if self.selected_entity is None:
