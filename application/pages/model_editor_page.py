@@ -6,7 +6,7 @@ from tkinter import messagebox, ttk
 from dese.application.pages.flow_object_editor import FlowObjectEditor
 from dese.application.pages.rules_tab_mixin import RulesTabMixin
 from dese.application.pages.structure_tab_mixin import StructureTabMixin
-from dese.constants import BUTTON_WIDTH, INPUT_WIDTH, PAD
+from dese.constants import BUTTON_WIDTH, INPUT_WIDTH, PAD, VALIDATION_RESULTS_WINDOW_SIZE
 from dese.core.model import (
     get_input_relationships,
     get_main_entity_input_relationships,
@@ -17,6 +17,7 @@ from dese.core.model import (
     move_routing_rule_output,
     remove_entity_from_rules,
 )
+from dese.core.validation import validate_model as validate_model_data
 from dese.utils import bind_canvas_mousewheel, convert_property_value, generate_id
 
 
@@ -45,6 +46,7 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         self.output_relationship_ids = []
         self.add_entity_window = None
         self.flow_object_editor = None
+        self.validation_results_window = None
         self.load_model()
 
         if self.model_data is not None:
@@ -113,6 +115,7 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         self.name_entry.config(state="normal")
         self.type_combobox.config(state="normal")
         self.save_model_button.config(state="normal")
+        self.show_issues_button.config(state="normal")
         self.beginning_of_process_checkbutton.config(state="normal")
         self.end_of_process_checkbutton.config(state="normal")
         self.flow_objects_button.config(state="normal")
@@ -423,6 +426,68 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
 
         self.saved_model_data = copy.deepcopy(self.model_data)
         self.update_model_changed_state()
+
+    def show_issues(self):
+        try:
+            issues = validate_model_data(self.model_data, self.schema)
+        except Exception as error:
+            messagebox.showerror(
+                "Validation error",
+                f"Could not validate the model, likely due to unexpected data:\n{error}",
+            )
+            return
+
+        if not issues:
+            messagebox.showinfo("Validation", "The model is valid — no issues found.")
+            return
+
+        if (
+            self.validation_results_window is None
+            or not self.validation_results_window.winfo_exists()
+        ):
+            self.build_validation_results_window()
+
+        self.validation_results_window.lift()
+        self.validation_results_window.focus_set()
+        self.render_validation_issues(issues)
+
+    def build_validation_results_window(self):
+        self.validation_results_window = tk.Toplevel(self)
+        self.validation_results_window.title("Validation Results")
+        self.validation_results_window.geometry(VALIDATION_RESULTS_WINDOW_SIZE)
+
+        # Grid:
+        self.validation_results_window.rowconfigure(1, weight=1)
+        self.validation_results_window.columnconfigure(0, weight=1)
+
+        # Widgets:
+        self.validation_results_summary_label = ttk.Label(
+            self.validation_results_window, padding=PAD
+        )
+        self.validation_results_text = tk.Text(self.validation_results_window, wrap="word")
+        self.validation_results_scrollbar = ttk.Scrollbar(
+            self.validation_results_window,
+            orient="vertical",
+            command=self.validation_results_text.yview,
+        )
+        self.validation_results_text.configure(yscrollcommand=self.validation_results_scrollbar.set)
+
+        # Display widgets:
+        self.validation_results_summary_label.grid(row=0, column=0, sticky="w")
+        self.validation_results_text.grid(row=1, column=0, sticky="nsew", padx=(PAD, 0), pady=(0, PAD))
+        self.validation_results_scrollbar.grid(row=1, column=1, sticky="ns", pady=(0, PAD))
+
+    def render_validation_issues(self, issues):
+        self.validation_results_summary_label.config(
+            text=f"{len(issues)} issue{'s' if len(issues) != 1 else ''} found:"
+        )
+
+        self.validation_results_text.config(state="normal")
+        self.validation_results_text.delete("1.0", "end")
+        self.validation_results_text.insert(
+            "end", "\n".join(f"• {issue['message']}" for issue in issues)
+        )
+        self.validation_results_text.config(state="disabled")
 
     # ==========================
     # Event Callbacks
@@ -872,25 +937,32 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         self.button_frame = ttk.Frame(self.main_frame, padding=PAD)
 
         # Grid:
-        self.button_frame.columnconfigure(0, weight=1)
+        self.button_frame.columnconfigure(1, weight=1)
 
         # Display frame widget:
         self.button_frame.grid(row=1, column=0, sticky="ew")
 
         # Child widgets:
-        self.save_model_button = ttk.Button(
-            self.button_frame, text="Save", width=BUTTON_WIDTH, command=self.save_model
-        )
         self.flow_objects_button = ttk.Button(
             self.button_frame,
             text="Flow Objects",
             width=BUTTON_WIDTH,
             command=self.open_flow_object_editor,
         )
+        self.save_model_button = ttk.Button(
+            self.button_frame, text="Save", width=BUTTON_WIDTH, command=self.save_model
+        )
+        self.show_issues_button = ttk.Button(
+            self.button_frame,
+            text="Show Issues",
+            width=BUTTON_WIDTH,
+            command=self.show_issues,
+        )
 
         # Display child widgets:
-        self.flow_objects_button.grid(row=0, column=0, sticky="e")
-        self.save_model_button.grid(row=0, column=1, sticky="e")
+        self.flow_objects_button.grid(row=0, column=0, sticky="w")
+        self.save_model_button.grid(row=0, column=2, sticky="e")
+        self.show_issues_button.grid(row=0, column=3, sticky="e")
 
         # Create tab content:
         self.create_structure_tab()

@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from dese.application.pages.model_editor_page import ModelEditorPage
+from dese.application.pages.simulation_page import SimulationPage
 from dese.application.pages.start_page import StartPage
 from dese.constants import (
     BUTTON_WIDTH,
@@ -9,6 +10,7 @@ from dese.constants import (
     START_WINDOW_SIZE,
 )
 from dese.core.schema_loader import SchemaLoader
+from dese.core.validation import validate_model as validate_model_data
 from dese.paths import DEFAULT_SCHEMA_PATH
 from dese.styles import configure_styles
 
@@ -79,6 +81,20 @@ class DESEApp(tk.Tk):
         else:
             self.unsaved_label.config(text="")
 
+        self.update_simulation_button_state()
+
+    def update_simulation_button_state(self):
+        # The Simulation page is only reachable once the active model has
+        # zero validation issues — re-checked on every edit (via
+        # set_model_changed) so the button reflects the model's current
+        # state, not just its state as of the last explicit Validate click.
+        if not hasattr(self, "model_editor_page") or self.model_editor_page.model_data is None:
+            self.simulation_button.config(state="disabled")
+            return
+
+        issues = validate_model_data(self.model_editor_page.model_data, self.schema)
+        self.simulation_button.config(state="normal" if not issues else "disabled")
+
     def create_window(self):
         # Window:
         self.geometry(START_WINDOW_SIZE)
@@ -110,6 +126,8 @@ class DESEApp(tk.Tk):
 
         # Display widgets:
         self.start_page.grid(row=0, column=0, sticky="nsew")
+
+        self.simulation_button.config(state="disabled")
 
     def open_start_page(self):
         if self.editing_model_path is not None and self.model_changed:
@@ -149,6 +167,28 @@ class DESEApp(tk.Tk):
         # Display widgets:
         self.model_editor_page.grid(row=0, column=0, sticky="nsew")
 
+        self.update_simulation_button_state()
+
+    def open_simulation_page(self):
+        if self.editing_model_path is None:
+            return
+
+        self.show_simulation_page()
+
+    def show_simulation_page(self):
+        # Window:
+        self.geometry(MODEL_EDITOR_WINDOW_SIZE)
+        self.resizable(False, False)
+
+        # Clear page:
+        self.clear_page()
+
+        # Widgets:
+        self.simulation_page = SimulationPage(self.container)
+
+        # Display widgets:
+        self.simulation_page.grid(row=0, column=0, sticky="nsew")
+
     def create_menu(self):
 
         # Menu Bar
@@ -185,6 +225,13 @@ class DESEApp(tk.Tk):
             command=self.open_model_editor,
             state="disabled",
         )
+        self.simulation_button = ttk.Button(
+            self.navigation_frame,
+            text="Simulation",
+            width=BUTTON_WIDTH,
+            command=self.open_simulation_page,
+            state="disabled",
+        )
         self.model_file_label = ttk.Label(self.navigation_frame, text="")
         self.unsaved_label = ttk.Label(self.navigation_frame, text="")
 
@@ -192,11 +239,12 @@ class DESEApp(tk.Tk):
         self.navigation_frame.grid(row=0, column=0, sticky="ew")
         self.start_button.grid(row=0, column=0)
         self.model_editor_button.grid(row=0, column=1)
-        self.model_file_label.grid(row=0, column=2)
-        self.unsaved_label.grid(row=0, column=3)
+        self.simulation_button.grid(row=0, column=2)
+        self.model_file_label.grid(row=0, column=3)
+        self.unsaved_label.grid(row=0, column=4)
 
         # Grid:
-        self.navigation_frame.columnconfigure(4, weight=1)
+        self.navigation_frame.columnconfigure(5, weight=1)
 
     # ==========================
     # Main Container

@@ -207,7 +207,8 @@
             },
             "queue_rule": {
               "type": "enum",
-              "values": ["FIFO", "LIFO", "Priority"],
+              "values": ["FIFO", "LIFO"],
+              "default": "FIFO",
               "description": "Rule determining the order in which Flow Objects leave the Storage."
             }
           }
@@ -325,6 +326,7 @@
           "properties": {
             "base_failure_probability": {
               "type": "number",
+              "max": 1,
               "description": "\"Fresh\" (just maintained or repaired) per-cycle probability that the Entity fails."
             },
             "added_failure_probability_per_cycle": {
@@ -356,6 +358,7 @@
           "properties": {
             "base_scrap_probability": {
               "type": "number",
+              "max": 1,
               "description": "\"Fresh\" (just maintained or repaired) per-cycle probability that a Flow Object becomes scrap from ordinary process variation, independent of any Entity failure."
             },
             "added_scrap_probability_per_cycle": {
@@ -373,6 +376,7 @@
             "dispatch_priority": {
               "type": "priority_list",
               "values": ["unplanned_first", "most_worn_first", "fifo"],
+              "default": ["unplanned_first", "most_worn_first", "fifo"],
               "labels": {
                 "unplanned_first": "Unplanned Repairs First",
                 "most_worn_first": "Most Worn First",

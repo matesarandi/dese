@@ -20,6 +20,8 @@ MODEL_EDITOR_WINDOW_SIZE = "1100x750"
 
 FLOW_OBJECT_WINDOW_SIZE = "800x600"
 
+VALIDATION_RESULTS_WINDOW_SIZE = "600x400"
+
 # ==========================
 # Entity Table Column Widths
 # ==========================
