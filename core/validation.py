@@ -217,19 +217,46 @@ def check_relationship_counts(model_data, schema):
 
 
 def check_has_process_boundary(model_data, schema):
+    # The Model Editor UI only ever lets one entity be marked as the
+    # beginning/end of the process (see update_process_boundary_state, which
+    # disables the checkbutton for every other entity once one is set), but
+    # the Simulation Engine must also work standalone, without going through
+    # that UI -- so this uniqueness rule is enforced here too, not just relied
+    # upon from the UI layer.
     if not model_data["entities"]:
         return []
 
     issues = []
 
-    if not any(entity.get("beginning_of_process") for entity in model_data["entities"]):
+    beginning_entity_ids = [
+        entity["id"] for entity in model_data["entities"] if entity.get("beginning_of_process")
+    ]
+    end_entity_ids = [
+        entity["id"] for entity in model_data["entities"] if entity.get("end_of_process")
+    ]
+
+    if not beginning_entity_ids:
         issues.append(
             {"severity": "error", "message": "No entity is marked as the beginning of the process."}
         )
+    elif len(beginning_entity_ids) > 1:
+        issues.append(
+            {
+                "severity": "error",
+                "message": "More than one entity is marked as the beginning of the process.",
+            }
+        )
 
-    if not any(entity.get("end_of_process") for entity in model_data["entities"]):
+    if not end_entity_ids:
         issues.append(
             {"severity": "error", "message": "No entity is marked as the end of the process."}
+        )
+    elif len(end_entity_ids) > 1:
+        issues.append(
+            {
+                "severity": "error",
+                "message": "More than one entity is marked as the end of the process.",
+            }
         )
 
     return issues

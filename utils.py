@@ -3,6 +3,10 @@ import sys
 from dese.constants import NUMBER_PROPERTY_TYPE
 
 
+def measure_column_width(texts, font, padding=20):
+    return max(font.measure(text) for text in texts) + padding
+
+
 def validate_number(value):
     if value == "":
         return True

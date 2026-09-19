@@ -30,7 +30,12 @@ from dese.core.model import (
     set_maintenance_resource_parameter,
     set_routing_condition_owner,
 )
-from dese.utils import bind_canvas_mousewheel, convert_property_value, validate_number
+from dese.utils import (
+    bind_canvas_mousewheel,
+    convert_property_value,
+    measure_column_width,
+    validate_number,
+)
 
 
 class RulesTabMixin:
@@ -301,7 +306,7 @@ class RulesTabMixin:
         # overflows past its own column budget into whatever sits to its
         # right.
         default_font = tkfont.nametofont("TkDefaultFont")
-        label_column_width = self.measure_column_width(
+        label_column_width = measure_column_width(
             [get_routing_scope_label(scope, variable) for scope, variable in scope_candidates]
             + [
                 value
@@ -318,7 +323,7 @@ class RulesTabMixin:
         for column_index, target_id in enumerate(target_ids):
             parent_frame.columnconfigure(
                 1 + column_index,
-                minsize=self.measure_column_width(
+                minsize=measure_column_width(
                     [self.get_routing_target_label(target_id)], default_font
                 ),
             )
@@ -473,7 +478,7 @@ class RulesTabMixin:
         # entry/unit columns justified at the same x position on every row,
         # regardless of which field's label is currently showing.
         default_font = tkfont.nametofont("TkDefaultFont")
-        label_column_width = self.measure_column_width(
+        label_column_width = measure_column_width(
             [name.replace("_", " ").title() for name in fields], default_font
         )
         parent_frame.columnconfigure(0, minsize=label_column_width)
@@ -572,7 +577,7 @@ class RulesTabMixin:
         default_font = tkfont.nametofont("TkDefaultFont")
         self.maintenance_resource_frame.columnconfigure(
             0,
-            minsize=self.measure_column_width(
+            minsize=measure_column_width(
                 [name.replace("_", " ").title() for name in fields], default_font
             ),
         )

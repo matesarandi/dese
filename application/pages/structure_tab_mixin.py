@@ -16,7 +16,7 @@ from dese.constants import (
     SPINBOX_WIDTH,
 )
 from dese.core.model import get_allowed_entities, is_main_entity
-from dese.utils import bind_canvas_mousewheel, validate_number
+from dese.utils import bind_canvas_mousewheel, measure_column_width, validate_number
 
 
 class StructureTabMixin:
@@ -24,9 +24,6 @@ class StructureTabMixin:
     Property and Relationship editors for the selected entity. Mixed into
     ModelEditorPage — its methods rely on attributes ModelEditorPage owns
     (model_data, schema, selected_entity, structure_tab, etc.)."""
-
-    def measure_column_width(self, texts, font, padding=20):
-        return max(font.measure(text) for text in texts) + padding
 
     def create_structure_tab(self):
         # Grid:
@@ -72,7 +69,7 @@ class StructureTabMixin:
 
         # Size the Type column to the longest entity type name actually
         # defined in the schema, rather than a guessed fixed width.
-        type_column_width = self.measure_column_width(
+        type_column_width = measure_column_width(
             self.schema.get_entity_types(self.model_data["domain"]) + ["Type"],
             default_font,
         )
