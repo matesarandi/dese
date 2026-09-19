@@ -7,6 +7,19 @@ from dese.constants import (
 )
 
 
+# The top-level keys every model_data dict must have, and their expected
+# type — checked at load time so a file that isn't a DESE model at all
+# (or a real one missing/corrupting a section) fails clearly here, instead
+# of loading "successfully" and then crashing later with a confusing
+# KeyError deep inside the UI or the validator.
+REQUIRED_MODEL_DATA_KEYS = {
+    "entities": list,
+    "relationships": list,
+    "flow_objects": list,
+    "rules": list,
+}
+
+
 def load_model_data(model_path, schema):
     # Headless (Tkinter-independent) so a future Simulation Engine can load
     # and validate a model file the same way the editor does, without
@@ -14,11 +27,20 @@ def load_model_data(model_path, schema):
     with open(model_path, "r") as file:
         model_data = json.load(file)
 
+    if not isinstance(model_data, dict):
+        raise ValueError("This file does not contain a valid DESE model.")
+
     if model_data.get("schema_version") != CURRENT_SCHEMA_VERSION:
         raise ValueError(
             "This model was created with an older or incompatible "
             "schema version and cannot be opened."
         )
+
+    for key, expected_type in REQUIRED_MODEL_DATA_KEYS.items():
+        if not isinstance(model_data.get(key), expected_type):
+            raise ValueError(
+                f'This file does not contain a valid DESE model (missing or invalid "{key}").'
+            )
 
     # There is no domain selector anymore — every model uses the schema's
     # default (Production) domain. Fall back to it for any model file that
