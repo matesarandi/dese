@@ -351,8 +351,7 @@ class RulesTabMixin:
             row=row,
             column=0,
             columnspan=1 + len(target_ids),
-            sticky="w",
-            pady=(0, 4),
+            sticky="w"
         )
 
         row += 1
@@ -364,7 +363,7 @@ class RulesTabMixin:
             )
 
             # Display widgets:
-            output_header.grid(row=row, column=1 + column_index, pady=(0, 4))
+            output_header.grid(row=row, column=1 + column_index)
 
         row += 1
 
@@ -378,8 +377,7 @@ class RulesTabMixin:
                     row=row,
                     column=0,
                     columnspan=1 + len(target_ids),
-                    sticky="ew",
-                    pady=6,
+                    sticky="ew"
                 )
 
                 row += 1
@@ -394,8 +392,7 @@ class RulesTabMixin:
                 row=row,
                 column=0,
                 columnspan=1 + len(target_ids),
-                sticky="w",
-                pady=(0, 2),
+                sticky="w"
             )
 
             row += 1
@@ -405,7 +402,7 @@ class RulesTabMixin:
                 value_label = ttk.Label(parent_frame, text=value)
 
                 # Display widgets:
-                value_label.grid(row=row, column=0, sticky="w", pady=2)
+                value_label.grid(row=row, column=0, sticky="w")
 
                 # A value with no box checked in its row is simply
                 # unassigned — no separate "unassigned" column needed.
@@ -435,7 +432,7 @@ class RulesTabMixin:
                         checkbutton.state(["!alternate", "!selected"])
 
                     # Display widgets:
-                    checkbutton.grid(row=row, column=1 + column_index, pady=2)
+                    checkbutton.grid(row=row, column=1 + column_index)
 
                 row += 1
 

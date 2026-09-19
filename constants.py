@@ -48,6 +48,11 @@ TITLE_FONT = ("Arial", 16, "bold")
 
 WRAP_LENGTH = 400
 
+# For description text on the wider, MODEL_EDITOR_WINDOW_SIZE-sized pages
+# (Model Editor, Simulation) — WRAP_LENGTH is sized for the narrower Start
+# page instead.
+WIDE_WRAP_LENGTH = 900
+
 # ==========================
 # Property Editor Layout
 # ==========================

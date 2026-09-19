@@ -2,7 +2,13 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import messagebox, ttk
 
-from dese.constants import BUTTON_WIDTH, INPUT_WIDTH, PAD, VALID_CONTROL_STRATEGIES
+from dese.constants import (
+    BUTTON_WIDTH,
+    INPUT_WIDTH,
+    PAD,
+    VALID_CONTROL_STRATEGIES,
+    WIDE_WRAP_LENGTH,
+)
 from dese.engine.simulation_request import (
     SIMULATION_REQUEST_FIELDS,
     SimulationRequestValidationError,
@@ -22,7 +28,53 @@ class SimulationPage(ttk.Frame):
         self.create_widgets()
 
     def create_widgets(self):
-        self.settings_frame = ttk.LabelFrame(self, text="Simulation Settings")
+        # Grid:
+        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
+
+        # Notebook
+        # ==========================
+
+        self.notebook = ttk.Notebook(self, padding=0)
+
+        self.settings_tab = ttk.Frame(self.notebook)
+        self.results_tab = ttk.Frame(self.notebook)
+
+        self.notebook.add(self.settings_tab, text="Settings")
+        self.notebook.add(self.results_tab, text="Results")
+
+        self.notebook.grid(row=0, column=0, sticky="nsew")
+
+        self.create_settings_tab()
+        self.create_results_tab()
+
+        # Button Frame
+        # ==========================
+        # Shared across every tab, so it lives below the notebook rather
+        # than inside one tab's content — same layout as the Model Editor's
+        # Save/Show Issues button row below its own notebook.
+
+        self.button_frame = ttk.Frame(self, padding=PAD)
+
+        # Grid:
+        self.button_frame.columnconfigure(0, weight=1)
+
+        # Display widget:
+        self.button_frame.grid(row=1, column=0, sticky="ew")
+
+        self.start_simulation_button = ttk.Button(
+            self.button_frame,
+            text="Start Simulation",
+            width=BUTTON_WIDTH,
+            command=self.start_simulation,
+        )
+        self.start_simulation_button.grid(row=0, column=0, sticky="e")
+
+    def create_settings_tab(self):
+        # Grid:
+        self.settings_tab.columnconfigure(0, weight=1)
+
+        self.settings_frame = ttk.LabelFrame(self.settings_tab, padding=PAD)
 
         # A fixed column 0 width (the longest field label here) keeps the
         # entry/unit columns justified at the same x position on every row —
@@ -44,7 +96,9 @@ class SimulationPage(ttk.Frame):
                 separator.grid(row=row, column=0, columnspan=4, sticky="ew")
                 row += 1
 
-            description_label = ttk.Label(self.settings_frame, text=field["description"])
+            description_label = ttk.Label(
+                self.settings_frame, text=field["description"], wraplength=WIDE_WRAP_LENGTH
+            )
             description_label.grid(row=row, column=0, columnspan=4, sticky="w")
             row += 1
 
@@ -78,16 +132,17 @@ class SimulationPage(ttk.Frame):
             self.simulation_request_entries[field_name] = entry
             row += 1
 
-        self.start_simulation_button = ttk.Button(
-            self,
-            text="Start Simulation",
-            width=BUTTON_WIDTH,
-            command=self.start_simulation,
-        )
+        # Display widget:
+        self.settings_frame.grid(row=0, column=0, sticky="new")
 
-        # Display widgets:
-        self.settings_frame.grid(row=0, column=0, sticky="nsew", padx=PAD, pady=PAD)
-        self.start_simulation_button.grid(row=1, column=0, sticky="e", padx=PAD, pady=PAD)
+    def create_results_tab(self):
+        # Grid:
+        self.results_tab.columnconfigure(0, weight=1)
+
+        self.no_results_label = ttk.Label(
+            self.results_tab, text="No results yet — run a simulation to see results here."
+        )
+        self.no_results_label.grid(row=0, column=0, sticky="w")
 
     def start_simulation(self):
         try:

@@ -474,8 +474,8 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
 
         # Display widgets:
         self.validation_results_summary_label.grid(row=0, column=0, sticky="w")
-        self.validation_results_text.grid(row=1, column=0, sticky="nsew", padx=(PAD, 0), pady=(0, PAD))
-        self.validation_results_scrollbar.grid(row=1, column=1, sticky="ns", pady=(0, PAD))
+        self.validation_results_text.grid(row=1, column=0, sticky="nsew")
+        self.validation_results_scrollbar.grid(row=1, column=1, sticky="ns")
 
     def render_validation_issues(self, issues):
         self.validation_results_summary_label.config(

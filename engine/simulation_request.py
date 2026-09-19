@@ -8,20 +8,29 @@ from dese.constants import VALID_CONTROL_STRATEGIES
 SIMULATION_REQUEST_FIELDS = {
     "run_duration": {
         "label": "Run Duration",
-        "description": "Total simulated time to run.",
+        "description": "How long the simulation runs before stopping.",
         "unit": "h",
     },
     "replications": {
         "label": "Replications",
-        "description": "Number of independent runs to average results over.",
+        "description": (
+            "Runs the model this many times over, each with its own random seed, and "
+            "averages the results — because a single run's outcome can be skewed by chance."
+        ),
     },
     "random_seed": {
         "label": "Random Seed",
-        "description": "Seed for the random number generator, for reproducible results.",
+        "description": (
+            "Determines the random outcomes of the run — the same seed always reproduces "
+            "the exact same result; a different seed gives a different (but equally valid) run."
+        ),
     },
     "control_strategy": {
         "label": "Control Strategy",
-        "description": "How Processing Entities receive Flow Objects: Push or Pull.",
+        "description": (
+            "Push: upstream sends a Flow Object downstream as soon as it's done. "
+            "Pull: downstream only receives one when it requests it."
+        ),
     },
 }
 
