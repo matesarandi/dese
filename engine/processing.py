@@ -1,6 +1,6 @@
 from dese.core.model import get_processing_duration_property
 from dese.engine.event_loop import EVENT_HANDLERS, schedule_event
-from dese.engine.maintenance import apply_wear_and_check_failure
+from dese.engine.maintenance import apply_wear_and_rules
 from dese.engine.movement import enter_entity, find_empty_slot
 from dese.engine.process_supply import consume_supply, has_sufficient_supply
 
@@ -76,10 +76,10 @@ def handle_finish_processing(state, data):
     slot = find_occupied_slot(entity_state, instance_id)
 
     # One completed cycle -- may put the Entity into "failed"/"down" (see
-    # maintenance.apply_wear_and_check_failure), which blocks NEW work from
-    # starting here, but doesn't affect this already-finished instance
-    # moving on normally below.
-    apply_wear_and_check_failure(state, entity_id)
+    # maintenance.apply_wear_and_rules), which blocks NEW work from starting
+    # here, and/or may mark THIS instance as scrap -- neither affects this
+    # already-finished instance moving on normally below.
+    apply_wear_and_rules(state, entity_id, instance_id)
 
     output_relationships = state.simulation_model.output_relationships_by_id[entity_id]
     is_end_of_process = entity_id == state.simulation_model.end_entity_id

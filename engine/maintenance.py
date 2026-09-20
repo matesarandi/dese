@@ -85,33 +85,59 @@ def handle_maintenance_resource_job_finished(state, data):
 EVENT_HANDLERS["maintenance_resource_job_finished"] = handle_maintenance_resource_job_finished
 
 
-def apply_wear_and_check_failure(state, entity_id):
+WEAR_DEPENDENT_RULE_TYPES = ("failure", "maintenance", "baseline_scrap")
+
+
+def apply_wear_and_rules(state, entity_id, instance_id):
     # Called once per completed cycle (see processing.handle_finish_processing).
-    # No-op for Entities without Failure rules configured at all.
+    # No-op for Entities with none of Failure/Maintenance/BaselineScrap
+    # configured -- an Entity can have any subset of these (independent
+    # rule_eligibility flags), so the shared wear counter increments
+    # whenever ANY of them is present, not just when Failure specifically is.
     rule_bundle = state.simulation_model.rules_by_entity_id.get(entity_id)
 
-    if rule_bundle is None or "failure" not in rule_bundle:
+    if rule_bundle is None or not any(
+        rule_type in rule_bundle for rule_type in WEAR_DEPENDENT_RULE_TYPES
+    ):
         return
 
     entity_state = state.entity_states[entity_id]
     entity_state.cycles_since_maintenance += 1
 
     maintenance_rule = rule_bundle.get("maintenance")
-
-    if (
+    maintenance_triggered = (
         maintenance_rule is not None
         and entity_state.cycles_since_maintenance >= maintenance_rule["maintenance_interval"]
-    ):
-        request_maintenance_resource(state, entity_id, "planned")
-        return
-
-    failure_rule = rule_bundle["failure"]
-    failure_probability = min(
-        1,
-        failure_rule["base_failure_probability"]
-        + failure_rule["added_failure_probability_per_cycle"]
-        * entity_state.cycles_since_maintenance,
     )
 
-    if state.random_generator.random() < failure_probability:
-        request_maintenance_resource(state, entity_id, "unplanned")
+    if maintenance_triggered:
+        request_maintenance_resource(state, entity_id, "planned")
+    else:
+        failure_rule = rule_bundle.get("failure")
+
+        if failure_rule is not None:
+            failure_probability = min(
+                1,
+                failure_rule["base_failure_probability"]
+                + failure_rule["added_failure_probability_per_cycle"]
+                * entity_state.cycles_since_maintenance,
+            )
+
+            if state.random_generator.random() < failure_probability:
+                request_maintenance_resource(state, entity_id, "unplanned")
+
+    # Baseline Scrap affects the just-finished Flow Object's own quality --
+    # independent of whether the Entity itself is about to go down for
+    # Maintenance/Failure, so it's always checked, not skipped above.
+    baseline_scrap_rule = rule_bundle.get("baseline_scrap")
+
+    if baseline_scrap_rule is not None:
+        scrap_probability = min(
+            1,
+            baseline_scrap_rule["base_scrap_probability"]
+            + baseline_scrap_rule["added_scrap_probability_per_cycle"]
+            * entity_state.cycles_since_maintenance,
+        )
+
+        if state.random_generator.random() < scrap_probability:
+            state.flow_object_instances[instance_id].quality = "scrap"
