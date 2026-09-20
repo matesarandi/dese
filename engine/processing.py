@@ -1,8 +1,10 @@
+from dese.constants import END_OF_PROCESS_ROUTING_TARGET
 from dese.core.model import get_processing_duration_property
 from dese.engine.event_loop import EVENT_HANDLERS, schedule_event
 from dese.engine.maintenance import apply_wear_and_rules
 from dese.engine.movement import enter_entity, find_empty_slot
 from dese.engine.process_supply import consume_supply, has_sufficient_supply
+from dese.engine.routing import evaluate_routing
 
 
 def find_occupied_slot(entity_state, instance_id):
@@ -67,6 +69,19 @@ def retry_stalled_slots(state, entity_id):
             start_processing(state, entity_id, instance_id)
 
 
+def get_possible_target_ids(state, entity_id):
+    entity = state.simulation_model.entities_by_id[entity_id]
+    target_ids = [
+        relationship["target"]
+        for relationship in state.simulation_model.output_relationships_by_id[entity_id]
+    ]
+
+    if entity.get("end_of_process"):
+        target_ids.append(END_OF_PROCESS_ROUTING_TARGET)
+
+    return target_ids
+
+
 def handle_finish_processing(state, data):
     entity_id = data["entity_id"]
     instance_id = data["instance_id"]
@@ -81,10 +96,24 @@ def handle_finish_processing(state, data):
     # already-finished instance moving on normally below.
     apply_wear_and_rules(state, entity_id, instance_id)
 
-    output_relationships = state.simulation_model.output_relationships_by_id[entity_id]
-    is_end_of_process = entity_id == state.simulation_model.end_entity_id
+    possible_target_ids = get_possible_target_ids(state, entity_id)
 
-    if is_end_of_process and not output_relationships:
+    if len(possible_target_ids) == 1:
+        target_id = possible_target_ids[0]
+    else:
+        # A genuine decision point (real output(s) plus, for end_of_process
+        # Entities, the virtual End of Process target) -- validate_model's
+        # check_routing_completeness already guarantees a Routing rule
+        # assigns every possible current state to one of these targets.
+        target_id = evaluate_routing(state, entity_id, instance_id)
+
+        if target_id is None:
+            raise RuntimeError(
+                f'Entity "{entity["name"]}" has no matching Routing rule for the current '
+                "state -- this should be impossible for a model that passed validate_model."
+            )
+
+    if target_id == END_OF_PROCESS_ROUTING_TARGET:
         # Exits the system. Completion bookkeeping (lead time, quality
         # outcome, KPIs) is a later layer -- for now just vacate the slot.
         slot["flow_object_instance_id"] = None
@@ -92,27 +121,15 @@ def handle_finish_processing(state, data):
         instance.current_entity_id = None
         return
 
-    if len(output_relationships) != 1 or is_end_of_process:
-        # Either a genuine decision point (>1 real output) or an
-        # end_of_process Entity that ALSO has a real output relationship --
-        # both need Routing rule evaluation, not implemented yet.
-        raise NotImplementedError(
-            f'Entity "{entity["name"]}" has {len(output_relationships)} possible output(s) '
-            f"(end_of_process={is_end_of_process}) -- Routing/decision points aren't "
-            "implemented yet."
-        )
-
-    next_entity_id = output_relationships[0]["target"]
-
-    if find_empty_slot(state.entity_states[next_entity_id]) is None:
+    if find_empty_slot(state.entity_states[target_id]) is None:
         # Blocked: stays put, still occupying this slot -- nothing else to
         # do here. Un-blocking when the next Entity later frees up a slot
         # isn't implemented yet (same as order_storage's own retry, this
         # needs its own follow-up pass).
         return
 
-    enter_entity(state, instance_id, next_entity_id)
-    start_processing(state, next_entity_id, instance_id)
+    enter_entity(state, instance_id, target_id)
+    start_processing(state, target_id, instance_id)
 
     slot["flow_object_instance_id"] = None
     slot["last_flow_object_type"] = instance.flow_object_type
