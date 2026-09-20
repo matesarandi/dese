@@ -85,12 +85,3 @@ MAIN_HIERARCHY_ROLE = "main"
 # Its display label is derived from this same field name, not a separate
 # hardcoded string — see RulesTabMixin.get_routing_target_label.
 END_OF_PROCESS_ROUTING_TARGET = "end_of_process"
-
-# ==========================
-# Simulation Request Vocabulary
-# ==========================
-
-# Valid values for SimulationRequest.control_strategy (see
-# dese/engine/simulation_request.py). Shared with the future Simulation page
-# UI, which will offer exactly these as choices.
-VALID_CONTROL_STRATEGIES = ["Push", "Pull"]

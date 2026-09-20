@@ -45,11 +45,27 @@ def check_property_value(value, property_schema, location):
     issues = []
 
     if property_type == NUMBER_PROPERTY_TYPE:
-        if value < 0:
+        # Every domain property so far is naturally non-negative, so that's
+        # the default lower bound; a property can declare its own "min"
+        # (inclusive) or "exclusive_min" (strictly greater than) instead --
+        # e.g. a Simulation Request's run_duration, where 0 is meaningless.
+        min_value = property_schema.get("min", 0)
+
+        if value < min_value:
+            if min_value == 0:
+                message = f"{location} cannot be negative (got {value})."
+            else:
+                message = f"{location} must be at least {min_value} (got {value})."
+
+            issues.append({"severity": "error", "message": message})
+
+        exclusive_min = property_schema.get("exclusive_min")
+
+        if exclusive_min is not None and value <= exclusive_min:
             issues.append(
                 {
                     "severity": "error",
-                    "message": f"{location} cannot be negative (got {value}).",
+                    "message": f"{location} must be greater than {exclusive_min} (got {value}).",
                 }
             )
 

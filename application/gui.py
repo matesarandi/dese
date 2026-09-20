@@ -184,7 +184,7 @@ class DESEApp(tk.Tk):
         self.clear_page()
 
         # Widgets:
-        self.simulation_page = SimulationPage(self.container)
+        self.simulation_page = SimulationPage(self.container, self.schema)
 
         # Display widgets:
         self.simulation_page.grid(row=0, column=0, sticky="nsew")

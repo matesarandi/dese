@@ -66,6 +66,9 @@ class SchemaLoader:
     def get_flow_object_schema(self):
         return self.schema_data["base_flow_object_schema"]
 
+    def get_simulation_request_schema(self):
+        return self.schema_data["simulation_request_schema"]
+
     def get_rule_schema(self, domain_name, rule_type):
         domain = self.get_domain(domain_name)
 

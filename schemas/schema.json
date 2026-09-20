@@ -105,6 +105,31 @@
     }
   },
 
+  "simulation_request_schema": {
+    "properties": {
+      "run_duration": {
+        "type": "number",
+        "exclusive_min": 0,
+        "unit": "h",
+        "description": "How long the simulation runs before stopping."
+      },
+      "replications": {
+        "type": "number",
+        "min": 1,
+        "description": "Runs the model this many times over, each with its own random seed, and averages the results — because a single run's outcome can be skewed by chance."
+      },
+      "random_seed": {
+        "type": "number",
+        "description": "Determines the random outcomes of the run — the same seed always reproduces the exact same result; a different seed gives a different (but equally valid) run."
+      },
+      "control_strategy": {
+        "type": "enum",
+        "values": ["Push", "Pull"],
+        "description": "Push: upstream sends a Flow Object downstream as soon as it's done. Pull: downstream only receives one when it requests it."
+      }
+    }
+  },
+
   "domains": [
     {
       "name": "Production",
