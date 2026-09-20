@@ -3,9 +3,8 @@ import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
 
 from dese.constants import BUTTON_WIDTH, INPUT_WIDTH, PAD, WIDE_WRAP_LENGTH
-from dese.core.model import has_quality_reading_entity
 from dese.core.validation import ENUM_PROPERTY_TYPE
-from dese.engine.event_log import export_event_log_to_csv, summarize_event_log
+from dese.engine.event_log import export_event_log_to_csv
 from dese.engine.flow_object_generation import schedule_flow_object_generation
 from dese.engine.process_supply import schedule_process_supply_replenishment
 from dese.engine.event_loop import run_simulation
@@ -206,54 +205,17 @@ class SimulationPage(ttk.Frame):
 
         summary_frame = ttk.LabelFrame(self.results_tab, text="Run Summary", padding=PAD)
         summary_frame.grid(row=0, column=0, sticky="new", padx=PAD, pady=PAD)
-        summary_frame.columnconfigure(1, weight=1)
+        summary_frame.columnconfigure(0, weight=1)
 
-        request = self.simulation_state.simulation_request
-        request_fields = self.schema.get_simulation_request_schema()["properties"]
-
-        row = 0
-
-        for field_name, field_schema in request_fields.items():
-            label = ttk.Label(summary_frame, text=field_name.replace("_", " ").title())
-            label.grid(row=row, column=0, sticky="w")
-
-            value_text = f"{getattr(request, field_name)} {field_schema.get('unit', '')}".strip()
-            value_label = ttk.Label(summary_frame, text=value_text)
-            value_label.grid(row=row, column=1, sticky="w", padx=(PAD, 0))
-            row += 1
-
-        simulated_time_label = ttk.Label(summary_frame, text="Simulated Time Reached")
-        simulated_time_label.grid(row=row, column=0, sticky="w")
-        simulated_time_value = ttk.Label(summary_frame, text=f"{self.simulation_state.clock} s")
-        simulated_time_value.grid(row=row, column=1, sticky="w", padx=(PAD, 0))
-        row += 1
-
-        if not has_quality_reading_entity(self.model_data, self.schema):
-            no_inspection_label = ttk.Label(
-                summary_frame,
-                text=(
-                    "No Inspection Entity in this model — defective Flow Objects are not "
-                    "filtered out, they continue through the rest of the process."
-                ),
-                wraplength=WIDE_WRAP_LENGTH,
-            )
-            no_inspection_label.grid(row=row, column=0, columnspan=2, sticky="w")
-            row += 1
-
-        separator = ttk.Separator(summary_frame, orient="horizontal")
-        separator.grid(row=row, column=0, columnspan=2, sticky="ew", pady=PAD)
-        row += 1
-
-        # Generic (event_type -> count) breakdown -- a new event_type
-        # introduced later shows up automatically here, no code change.
-        event_counts = summarize_event_log(self.simulation_state)
-
-        for event_type, count in event_counts.items():
-            label = ttk.Label(summary_frame, text=event_type.replace("_", " ").title())
-            label.grid(row=row, column=0, sticky="w")
-            value_label = ttk.Label(summary_frame, text=str(count))
-            value_label.grid(row=row, column=1, sticky="w", padx=(PAD, 0))
-            row += 1
+        # Deliberately minimal -- confirms the run finished and how much
+        # simulated time it covered; the actual analysis happens on the
+        # exported CSV (Export CSV below), not in this pane.
+        status_text = (
+            f"Simulation completed — {self.simulation_state.clock} s simulated, "
+            f"{len(self.simulation_state.event_log)} events logged."
+        )
+        status_label = ttk.Label(summary_frame, text=status_text, wraplength=WIDE_WRAP_LENGTH)
+        status_label.grid(row=0, column=0, sticky="w")
 
         export_button = ttk.Button(
             self.results_tab,
@@ -299,7 +261,6 @@ class SimulationPage(ttk.Frame):
         try:
             simulation_request = build_simulation_request(
                 values_by_field_name["run_duration"],
-                values_by_field_name["replications"],
                 values_by_field_name["random_seed"],
                 values_by_field_name["control_strategy"],
                 self.schema,

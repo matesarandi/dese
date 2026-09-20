@@ -77,7 +77,21 @@ def handle_maintenance_resource_job_finished(state, data):
     resource_state = state.maintenance_resource_state
 
     entity_state.cycles_since_maintenance = 0
-    entity_state.status = "idle"
+    # Silently clears failed/down to a sentinel (no update_entity_status/
+    # logging here -- just enough for start_processing's own status check,
+    # below via retry_stalled_slots, to not refuse). None rather than
+    # "idle": retry_stalled_slots' own final update_entity_status call
+    # (see its own comment) compares against WHATEVER this was set to, so
+    # if the true outcome happens to also be "idle" (nothing to resume),
+    # pre-setting "idle" here would make that look like no change at all --
+    # silently swallowing a real failed/down -> idle transition. None never
+    # equals a real computed status, so that comparison always logs
+    # something, whatever the real outcome turns out to be. Calling
+    # update_entity_status directly here (before retry_stalled_slots) would
+    # have the OTHER problem -- logging a premature "blocked" for a
+    # seated-but-not-yet-retried occupant that a few lines later turns out
+    # to have been wrong, the same bug movement.enter_entity used to have.
+    entity_state.status = None
     resource_state.busy_count -= 1
     log_event(
         state,
@@ -91,6 +105,9 @@ def handle_maintenance_resource_job_finished(state, data):
         next_entry = resource_state.waiting_entity_ids.pop(0)
         start_maintenance_resource_job(state, next_entry)
 
+    # retry_stalled_slots' own final update_entity_status call (see its
+    # comment) determines and logs the real outcome against the None
+    # sentinel above -- nothing further needed here.
     retry_stalled_slots(state, entity_id)
 
 
@@ -117,39 +134,49 @@ def apply_wear_and_rules(state, entity_id, instance_id):
     entity_state.cycles_since_maintenance += 1
     instance = state.flow_object_instances[instance_id]
 
-    maintenance_rule = rule_bundle.get("maintenance")
-    maintenance_triggered = (
-        maintenance_rule is not None
-        and entity_state.cycles_since_maintenance >= maintenance_rule["maintenance_interval"]
-    )
+    # Only rolls a NEW failure/maintenance incident if the Entity isn't
+    # already down -- with capacity > 1 (independent parallel slots sharing
+    # one physical Entity), a second slot can finish shortly after the first
+    # one already failed it (its finish_processing was scheduled before the
+    # failure and nothing cancels it). Without this guard, that second
+    # finish independently rolls its own failure/maintenance check and can
+    # request a SECOND, separate repair job for the same Entity -- doubling
+    # up on the shared Maintenance Resource's capacity and logging two
+    # entity_failed rows for what is really one incident on one machine.
+    if entity_state.status not in ("failed", "down"):
+        maintenance_rule = rule_bundle.get("maintenance")
+        maintenance_triggered = (
+            maintenance_rule is not None
+            and entity_state.cycles_since_maintenance >= maintenance_rule["maintenance_interval"]
+        )
 
-    if maintenance_triggered:
-        request_maintenance_resource(state, entity_id, "planned")
-    else:
-        failure_rule = rule_bundle.get("failure")
+        if maintenance_triggered:
+            request_maintenance_resource(state, entity_id, "planned")
+        else:
+            failure_rule = rule_bundle.get("failure")
 
-        if failure_rule is not None:
-            failure_probability = min(
-                1,
-                failure_rule["base_failure_probability"]
-                + failure_rule["added_failure_probability_per_cycle"]
-                * entity_state.cycles_since_maintenance,
-            )
+            if failure_rule is not None:
+                failure_probability = min(
+                    1,
+                    failure_rule["base_failure_probability"]
+                    + failure_rule["added_failure_probability_per_cycle"]
+                    * entity_state.cycles_since_maintenance,
+                )
 
-            if state.random_generator.random() < failure_probability:
-                request_maintenance_resource(state, entity_id, "unplanned")
+                if state.random_generator.random() < failure_probability:
+                    request_maintenance_resource(state, entity_id, "unplanned")
 
-                # The Entity broke down while actively working on this
-                # instance -- a direct consequence, distinct from
-                # BaselineScrap's own failure-independent roll below (which
-                # is skipped once this already applies). Not its own log
-                # event -- "becoming scrap" isn't a real-world event, just a
-                # state change that the next flow_object_exited/completed/
-                # routed row already shows (quality/cause come from
-                # get_flow_object_log_fields), same time, next sequence.
-                if instance.quality != "scrap":
-                    instance.quality = "scrap"
-                    instance.scrap_cause = "entity_failure"
+                    # The Entity broke down while actively working on this
+                    # instance -- a direct consequence, distinct from
+                    # BaselineScrap's own failure-independent roll below (which
+                    # is skipped once this already applies). Not its own log
+                    # event -- "becoming scrap" isn't a real-world event, just a
+                    # state change that the next flow_object_exited/completed/
+                    # routed row already shows (quality/cause come from
+                    # get_flow_object_log_fields), same time, next sequence.
+                    if instance.quality != "scrap":
+                        instance.quality = "scrap"
+                        instance.scrap_cause = "entity_failure"
 
     # Baseline Scrap affects the just-finished Flow Object's own quality --
     # independent of whether the Entity itself is about to go down for

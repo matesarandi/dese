@@ -3,7 +3,6 @@ from dese.engine.event_loop import EVENT_HANDLERS, schedule_event
 from dese.engine.movement import admit_from_order_storage
 from dese.engine.processing import start_processing
 from dese.engine.simulation_state import FlowObjectInstance
-from dese.utils import generate_id
 
 
 def schedule_flow_object_generation(state):
@@ -29,7 +28,8 @@ def handle_generate_flow_objects(state, data):
     properties = flow_object_type["properties"]
 
     for _ in range(int(properties["batch_size"])):
-        instance_id = generate_id(state.flow_object_instances.keys(), "FO")
+        state.flow_object_instance_counter += 1
+        instance_id = f"FO{state.flow_object_instance_counter:03d}"
         state.flow_object_instances[instance_id] = FlowObjectInstance(
             id=instance_id,
             flow_object_type=flow_object_type_name,

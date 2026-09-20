@@ -1,7 +1,11 @@
 import random
 from dataclasses import dataclass, field
 
-from dese.core.model import get_processing_duration_property, holds_flow_object_queue
+from dese.core.model import (
+    get_processing_duration_property,
+    holds_flow_object_queue,
+    is_supply_source,
+)
 
 
 @dataclass
@@ -21,9 +25,9 @@ class FlowObjectInstance:
 @dataclass
 class EntityState:
     # slots is fixed-size, one entry per unit of the Entity's own "capacity"
-    # -- only for Entities that do timed processing (Processing/Inspection/
-    # Transport; see get_processing_duration_property), empty [] otherwise
-    # (Storage/Process Supply/Process Sink don't have "slots" in this sense).
+    # -- only for Entities that do timed processing (Processing/Inspection;
+    # see get_processing_duration_property), empty [] otherwise (Storage/
+    # Process Supply/Process Sink don't have "slots" in this sense).
     # A slot's identity (its position in the list) stays stable across
     # occupants: {"flow_object_instance_id": None-or-id, "last_flow_object_type":
     # ..., "processing_started": bool} -- last_flow_object_type persists even
@@ -66,6 +70,12 @@ class SimulationState:
     # breaker) so the exported log's sequence column starts cleanly at 1,
     # independent of how many events happened to already be scheduled.
     log_sequence_counter: int = 0
+    # A dedicated monotonic counter for Flow Object instance ids -- unlike
+    # utils.generate_id (used for Entities/Relationships, where reusing the
+    # lowest free number after a delete is the right, human-facing UX),
+    # instance ids are never freed, so re-scanning from 1 on every single
+    # generated instance would turn a long/high-volume run quadratic.
+    flow_object_instance_counter: int = 0
 
 
 def build_entity_state(entity, domain_only_model_data, schema):
@@ -105,7 +115,7 @@ def build_simulation_state(simulation_model, simulation_request):
     process_supply_states = {
         entity_id: entity["properties"]["initial_quantity"]
         for entity_id, entity in simulation_model.entities_by_id.items()
-        if "initial_quantity" in entity.get("properties", {})
+        if is_supply_source(entity, domain_only_model_data, simulation_model.schema)
     }
 
     return SimulationState(

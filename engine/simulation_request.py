@@ -15,15 +15,13 @@ class SimulationRequestValidationError(Exception):
 @dataclass
 class SimulationRequest:
     run_duration: float
-    replications: float
     random_seed: float
     control_strategy: str
 
 
-def validate_simulation_request(run_duration, replications, random_seed, control_strategy, schema):
+def validate_simulation_request(run_duration, random_seed, control_strategy, schema):
     values_by_field_name = {
         "run_duration": run_duration,
-        "replications": replications,
         "random_seed": random_seed,
         "control_strategy": control_strategy,
     }
@@ -39,17 +37,14 @@ def validate_simulation_request(run_duration, replications, random_seed, control
     return issues
 
 
-def build_simulation_request(run_duration, replications, random_seed, control_strategy, schema):
-    issues = validate_simulation_request(
-        run_duration, replications, random_seed, control_strategy, schema
-    )
+def build_simulation_request(run_duration, random_seed, control_strategy, schema):
+    issues = validate_simulation_request(run_duration, random_seed, control_strategy, schema)
 
     if issues:
         raise SimulationRequestValidationError(issues)
 
     return SimulationRequest(
         run_duration=run_duration,
-        replications=replications,
         random_seed=random_seed,
         control_strategy=control_strategy,
     )

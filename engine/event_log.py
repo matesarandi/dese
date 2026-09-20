@@ -1,13 +1,4 @@
 import csv
-from collections import Counter
-
-
-def summarize_event_log(state):
-    # Generic (event_type -> count) breakdown -- a new event_type introduced
-    # later shows up automatically, no code change needed here. Actual KPI
-    # computation (throughput, OEE, ...) is a separate, later layer; this is
-    # just the raw, always-accurate starting point for it.
-    return Counter(entry["event_type"] for entry in state.event_log)
 
 
 def get_entity_log_fields(state, entity_id):
@@ -21,7 +12,7 @@ def get_flow_object_log_fields(state, instance_id):
     # earlier Entity still shows quality="scrap" when it later enters/exits
     # a completely different one. This is the one place that decides what a
     # Flow-Object-related log row shows for these, used by every event type
-    # involving an instance (generated, entered, exited, completed, routed).
+    # involving an instance (generated, entered, exited, completed).
     instance = state.flow_object_instances[instance_id]
     return {
         "instance_id": instance_id,

@@ -113,11 +113,6 @@
         "unit": "h",
         "description": "How long the simulation runs before stopping."
       },
-      "replications": {
-        "type": "number",
-        "min": 1,
-        "description": "Runs the model this many times over, each with its own random seed, and averages the results — because a single run's outcome can be skewed by chance."
-      },
       "random_seed": {
         "type": "number",
         "description": "Determines the random outcomes of the run — the same seed always reproduces the exact same result; a different seed gives a different (but equally valid) run."
@@ -139,7 +134,6 @@
         "Processing",
         "Inspection",
         "Storage",
-        "Transport",
         "Process Supply",
         "Process Sink"
       ],
@@ -231,42 +225,6 @@
               "type": "number",
               "unit": "piece",
               "description": "Maximum number of Flow Objects that can be stored."
-            },
-            "queue_rule": {
-              "type": "enum",
-              "values": ["FIFO"],
-              "default": "FIFO",
-              "description": "Rule determining the order in which Flow Objects leave the Storage. (LIFO is planned for a future version.)"
-            }
-          }
-        },
-
-        {
-          "type": "Transport",
-          "input_min": 1,
-          "input_max": 1,
-          "output_min": 1,
-          "output_max": 1,
-          "hierarchy": {
-            "role": "main",
-            "position": "center"
-          },
-          "simulation_role": {
-            "processing_duration_property": "transport_time"
-          },
-          "rule_eligibility": {
-            "supports_failure": true
-          },
-          "properties": {
-            "transport_time": {
-              "type": "number",
-              "unit": "s",
-              "description": "Time required to transport one Flow Object."
-            },
-            "capacity": {
-              "type": "number",
-              "unit": "piece",
-              "description": "Maximum number of Flow Objects that can be transported at once."
             }
           }
         },
@@ -308,7 +266,7 @@
         {
           "type": "Process Sink",
           "input_min": 1,
-          "input_max": 1,
+          "input_max": 2,
           "output_min": 0,
           "output_max": 0,
           "hierarchy": {
@@ -327,27 +285,17 @@
           "Processing",
           "Inspection",
           "Storage",
-          "Transport",
           "Process Sink"
         ],
         "Inspection": [
           "Processing",
           "Inspection",
           "Storage",
-          "Transport",
           "Process Sink"
         ],
         "Storage": [
           "Processing",
-          "Inspection",
-          "Transport"
-        ],
-        "Transport": [
-          "Processing",
-          "Inspection",
-          "Transport",
-          "Storage",
-          "Process Sink"
+          "Inspection"
         ],
         "Process Supply": [
           "Processing"

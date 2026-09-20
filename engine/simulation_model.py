@@ -4,7 +4,7 @@ from dese.core.model import (
     find_decision_points,
     find_entity_rules,
     find_maintenance_resource_rule,
-    get_input_relationships,
+    get_main_entity_input_relationships,
     get_output_relationships,
 )
 from dese.core.validation import validate_model
@@ -46,8 +46,17 @@ def build_simulation_model(model_data, schema):
 
     entities_by_id = {entity["id"]: entity for entity in model_data["entities"]}
 
+    # Main-entity-only (excludes Process Supply feeds) -- this is used
+    # exclusively by processing.retry_upstream to find "the one real
+    # upstream Entity whose finished-but-blocked item might want to move
+    # into a slot that just freed up". A Process Supply relationship
+    # carries material, not Flow Objects, so it must not count as a second
+    # "upstream" -- otherwise retry_upstream's len(...) != 1 guard bails out
+    # for every Entity that has process_requirements configured (i.e. most
+    # real models), silently breaking the whole proactive un-blocking
+    # cascade beyond one hop.
     input_relationships_by_id = {
-        entity_id: get_input_relationships(entity_id, model_data)
+        entity_id: get_main_entity_input_relationships(entity_id, model_data, schema)
         for entity_id in entities_by_id
     }
     output_relationships_by_id = {
