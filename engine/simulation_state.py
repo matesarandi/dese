@@ -27,7 +27,10 @@ class EntityState:
     # Entity, since capacity > 1 means independent parallel resources -- e.g.
     # separate robot arms). processing_started is False while an occupant is
     # seated but stalled waiting on Process Supply material -- see
-    # processing.retry_stalled_slots, called on every replenishment.
+    # processing.retry_stalled_slots, called on every replenishment. finished
+    # is True once an occupant is done but couldn't move on (its target was
+    # full) -- see processing.retry_upstream, called whenever a downstream
+    # slot frees up, to un-block it without waiting for an unrelated event.
     status: str = "idle"
     slots: list = field(default_factory=list)
     cycles_since_maintenance: float = 0
@@ -67,6 +70,7 @@ def build_entity_state(entity, domain_only_model_data, schema):
             "flow_object_instance_id": None,
             "last_flow_object_type": None,
             "processing_started": False,
+            "finished": False,
         }
         for _ in range(capacity)
     ]
