@@ -62,6 +62,10 @@ class SimulationState:
     process_supply_states: dict
     maintenance_resource_state: MaintenanceResourceState
     event_log: list
+    # Separate from event_sequence_counter (the event QUEUE's own tie-
+    # breaker) so the exported log's sequence column starts cleanly at 1,
+    # independent of how many events happened to already be scheduled.
+    log_sequence_counter: int = 0
 
 
 def build_entity_state(entity, domain_only_model_data, schema):

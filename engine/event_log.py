@@ -38,13 +38,14 @@ def log_event(state, event_type, **details):
     # the whole point of keeping them as discrete events rather than
     # periodic dumps (see the SimulationState/SimulationModel design notes).
     #
-    # sequence reuses the same counter the event queue itself uses for tie-
-    # breaking (event_loop.schedule_event) -- one shared, monotonic sense of
-    # "what happened in what order" across both scheduled events and logged
-    # facts, which the future Event Replay (DESE-54) can step through.
-    state.event_sequence_counter += 1
+    # sequence has its own counter, separate from the event QUEUE's tie-
+    # breaker (event_loop.schedule_event) -- so it starts cleanly at 1
+    # regardless of how many events were already scheduled beforehand. Still
+    # a single monotonic ordering across everything actually logged, which
+    # the future Event Replay (DESE-54) can step through.
+    state.log_sequence_counter += 1
     state.event_log.append(
-        {"sequence": state.event_sequence_counter, "time": state.clock, "event_type": event_type, **details}
+        {"sequence": state.log_sequence_counter, "time": state.clock, "event_type": event_type, **details}
     )
 
 
