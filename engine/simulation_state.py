@@ -56,6 +56,7 @@ class SimulationState:
     storage_states: dict
     process_supply_states: dict
     maintenance_resource_state: MaintenanceResourceState
+    event_log: list
 
 
 def build_entity_state(entity, domain_only_model_data, schema):
@@ -111,4 +112,5 @@ def build_simulation_state(simulation_model, simulation_request):
         storage_states=storage_states,
         process_supply_states=process_supply_states,
         maintenance_resource_state=MaintenanceResourceState(),
+        event_log=[],
     )

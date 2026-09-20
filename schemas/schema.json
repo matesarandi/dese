@@ -315,6 +315,9 @@
             "role": "secondary",
             "position": "below"
           },
+          "simulation_role": {
+            "absorbs_flow_objects": true
+          },
           "properties": {}
         }
       ],

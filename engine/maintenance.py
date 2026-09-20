@@ -1,3 +1,4 @@
+from dese.engine.event_log import get_entity_log_fields, get_flow_object_log_fields, log_event
 from dese.engine.event_loop import EVENT_HANDLERS, schedule_event
 
 # Each function ranks the waiting list by one criterion; dispatch_priority
@@ -28,6 +29,12 @@ def request_maintenance_resource(state, entity_id, request_type):
     # single machine, even with several parallel processing slots).
     entity_state = state.entity_states[entity_id]
     entity_state.status = "failed" if request_type == "unplanned" else "down"
+    log_event(
+        state,
+        "entity_failed" if request_type == "unplanned" else "entity_maintenance_started",
+        **get_entity_log_fields(state, entity_id),
+        cycles_since_maintenance=entity_state.cycles_since_maintenance,
+    )
 
     entry = {
         "entity_id": entity_id,
@@ -72,6 +79,11 @@ def handle_maintenance_resource_job_finished(state, data):
     entity_state.cycles_since_maintenance = 0
     entity_state.status = "idle"
     resource_state.busy_count -= 1
+    log_event(
+        state,
+        "entity_repaired" if data["request_type"] == "unplanned" else "entity_maintenance_finished",
+        **get_entity_log_fields(state, entity_id),
+    )
 
     if resource_state.waiting_entity_ids:
         dispatch_priority = state.simulation_model.maintenance_resource_rule["dispatch_priority"]
@@ -141,3 +153,10 @@ def apply_wear_and_rules(state, entity_id, instance_id):
 
         if state.random_generator.random() < scrap_probability:
             state.flow_object_instances[instance_id].quality = "scrap"
+            log_event(
+                state,
+                "flow_object_scrapped",
+                **get_entity_log_fields(state, entity_id),
+                **get_flow_object_log_fields(state, instance_id),
+                cycles_since_maintenance=entity_state.cycles_since_maintenance,
+            )

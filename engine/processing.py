@@ -1,5 +1,6 @@
 from dese.constants import END_OF_PROCESS_ROUTING_TARGET
-from dese.core.model import get_processing_duration_property
+from dese.core.model import absorbs_flow_objects, get_processing_duration_property
+from dese.engine.event_log import get_entity_log_fields, get_flow_object_log_fields, log_event
 from dese.engine.event_loop import EVENT_HANDLERS, schedule_event
 from dese.engine.maintenance import apply_wear_and_rules
 from dese.engine.movement import admit_from_order_storage, enter_entity, find_empty_slot
@@ -52,6 +53,12 @@ def start_processing(state, entity_id, instance_id):
 
     slot["processing_started"] = True
     entity_state.status = "busy"
+    log_event(
+        state,
+        "flow_object_entered",
+        **get_entity_log_fields(state, entity_id),
+        **get_flow_object_log_fields(state, instance_id),
+    )
 
     schedule_event(
         state,
@@ -111,12 +118,44 @@ def try_advance_finished_instance(state, entity_id, instance_id):
             )
 
     if target_id == END_OF_PROCESS_ROUTING_TARGET:
-        # Exits the system. Completion bookkeeping (lead time, quality
-        # outcome, KPIs) is a later layer -- for now just vacate the slot.
+        # Exits the system via the main path (End of Process).
         slot["flow_object_instance_id"] = None
         slot["last_flow_object_type"] = instance.flow_object_type
         slot["finished"] = False
         instance.current_entity_id = None
+        log_event(
+            state,
+            "flow_object_completed",
+            **get_entity_log_fields(state, entity_id),
+            **get_flow_object_log_fields(state, instance_id),
+            quality=instance.quality,
+            lead_time=state.clock - instance.created_at,
+        )
+        retry_upstream(state, entity_id)
+        return
+
+    target_entity = state.simulation_model.entities_by_id[target_id]
+    domain_only_model_data = {"domain": state.simulation_model.domain}
+
+    if absorbs_flow_objects(target_entity, domain_only_model_data, state.simulation_model.schema):
+        # A Process Sink: no slots/capacity of its own -- every arrival is
+        # absorbed immediately, never queued. This is the "routed away from
+        # the main path" case the v1 KPI design uses as its scrap signal
+        # (see 08-kpi-definitions.md's flow_object_routed), logged alongside
+        # the instance's own actual quality so the two signals stay
+        # independent rather than one being inferred from the other.
+        slot["flow_object_instance_id"] = None
+        slot["last_flow_object_type"] = instance.flow_object_type
+        slot["finished"] = False
+        instance.current_entity_id = None
+        log_event(
+            state,
+            "flow_object_routed",
+            **get_entity_log_fields(state, entity_id),
+            target_entity_id=target_id,
+            **get_flow_object_log_fields(state, instance_id),
+            quality=instance.quality,
+        )
         retry_upstream(state, entity_id)
         return
 
@@ -173,8 +212,16 @@ def handle_finish_processing(state, data):
     # One completed cycle -- may put the Entity into "failed"/"down" (see
     # maintenance.apply_wear_and_rules), which blocks NEW work from starting
     # here, and/or may mark THIS instance as scrap -- neither affects this
-    # already-finished instance moving on normally below.
+    # already-finished instance moving on normally below. Logged after, so
+    # cycles_since_maintenance reflects this cycle's own increment.
     apply_wear_and_rules(state, entity_id, instance_id)
+    log_event(
+        state,
+        "flow_object_exited",
+        **get_entity_log_fields(state, entity_id),
+        **get_flow_object_log_fields(state, instance_id),
+        cycles_since_maintenance=state.entity_states[entity_id].cycles_since_maintenance,
+    )
     try_advance_finished_instance(state, entity_id, instance_id)
 
 

@@ -91,6 +91,15 @@ def holds_flow_object_queue(entity, model_data, schema):
     )
 
 
+def absorbs_flow_objects(entity, model_data, schema):
+    entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
+
+    if entity_schema is None:
+        return False
+
+    return entity_schema.get("simulation_role", {}).get("absorbs_flow_objects", False)
+
+
 def get_processing_duration_property(entity, model_data, schema):
     # The property name (e.g. "processing_time") holding how long this
     # Entity takes per Flow Object -- None for Entities that don't do timed,
