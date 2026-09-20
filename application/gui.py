@@ -25,6 +25,13 @@ class DESEApp(tk.Tk):
         self.model_changed = False
         self.editing_model_path = None
         self.selected_model_path = None
+        # SimulationPage is rebuilt from scratch every time it's shown (see
+        # show_simulation_page) -- unlike ModelEditorPage, it has no file to
+        # reload from, so its entered settings and last run's results would
+        # otherwise be lost on every navigation away and back. Held here
+        # instead, across rebuilds.
+        self.simulation_state = None
+        self.simulation_request_field_values = {}
         self.create_window()
         self.create_menu()
         self.create_navigation()
@@ -184,10 +191,24 @@ class DESEApp(tk.Tk):
         self.clear_page()
 
         # Widgets:
-        self.simulation_page = SimulationPage(self.container, self.schema)
+        self.simulation_page = SimulationPage(
+            self.container,
+            self.schema,
+            self.model_editor_page.model_data,
+            simulation_state=self.simulation_state,
+            simulation_request_field_values=self.simulation_request_field_values,
+            on_simulation_state_changed=self.set_simulation_state,
+            on_field_changed=self.set_simulation_request_field_value,
+        )
 
         # Display widgets:
         self.simulation_page.grid(row=0, column=0, sticky="nsew")
+
+    def set_simulation_state(self, simulation_state):
+        self.simulation_state = simulation_state
+
+    def set_simulation_request_field_value(self, field_name, value):
+        self.simulation_request_field_values[field_name] = value
 
     def create_menu(self):
 

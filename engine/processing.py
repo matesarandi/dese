@@ -128,7 +128,6 @@ def try_advance_finished_instance(state, entity_id, instance_id):
             "flow_object_completed",
             **get_entity_log_fields(state, entity_id),
             **get_flow_object_log_fields(state, instance_id),
-            quality=instance.quality,
             lead_time=state.clock - instance.created_at,
         )
         retry_upstream(state, entity_id)
@@ -154,7 +153,7 @@ def try_advance_finished_instance(state, entity_id, instance_id):
             **get_entity_log_fields(state, entity_id),
             target_entity_id=target_id,
             **get_flow_object_log_fields(state, instance_id),
-            quality=instance.quality,
+            lead_time=state.clock - instance.created_at,
         )
         retry_upstream(state, entity_id)
         return

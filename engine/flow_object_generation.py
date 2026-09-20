@@ -1,4 +1,4 @@
-from dese.engine.event_log import log_event
+from dese.engine.event_log import get_flow_object_log_fields, log_event
 from dese.engine.event_loop import EVENT_HANDLERS, schedule_event
 from dese.engine.movement import admit_from_order_storage
 from dese.engine.processing import start_processing
@@ -38,13 +38,7 @@ def handle_generate_flow_objects(state, data):
             current_entity_id=None,
         )
         state.order_storage.append(instance_id)
-        log_event(
-            state,
-            "flow_object_generated",
-            instance_id=instance_id,
-            flow_object_type=flow_object_type_name,
-            created_at=state.clock,
-        )
+        log_event(state, "flow_object_generated", **get_flow_object_log_fields(state, instance_id))
 
     beginning_entity_id = state.simulation_model.beginning_entity_id
 

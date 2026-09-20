@@ -11,6 +11,11 @@ class FlowObjectInstance:
     created_at: float
     quality: str
     current_entity_id: str
+    # Set alongside quality="scrap" ("entity_failure" or "baseline_variation",
+    # see maintenance.apply_wear_and_rules) so any later event involving this
+    # instance can report WHY it's scrap, not just THAT it is -- avoids
+    # needing to cross-reference the original flow_object_scrapped row.
+    scrap_cause: str = None
 
 
 @dataclass

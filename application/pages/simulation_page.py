@@ -1,13 +1,20 @@
 import tkinter as tk
 import tkinter.font as tkfont
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 from dese.constants import BUTTON_WIDTH, INPUT_WIDTH, PAD, WIDE_WRAP_LENGTH
+from dese.core.model import has_quality_reading_entity
 from dese.core.validation import ENUM_PROPERTY_TYPE
+from dese.engine.event_log import export_event_log_to_csv, summarize_event_log
+from dese.engine.flow_object_generation import schedule_flow_object_generation
+from dese.engine.process_supply import schedule_process_supply_replenishment
+from dese.engine.event_loop import run_simulation
+from dese.engine.simulation_model import ModelValidationError, build_simulation_model
 from dese.engine.simulation_request import (
     SimulationRequestValidationError,
     build_simulation_request,
 )
+from dese.engine.simulation_state import build_simulation_state
 from dese.utils import measure_column_width, validate_number
 
 
@@ -16,10 +23,24 @@ class SimulationPage(ttk.Frame):
     once the active model passes validation — see
     DESEApp.update_simulation_button_state."""
 
-    def __init__(self, parent, schema):
+    def __init__(
+        self,
+        parent,
+        schema,
+        model_data,
+        simulation_state=None,
+        simulation_request_field_values=None,
+        on_simulation_state_changed=None,
+        on_field_changed=None,
+    ):
         super().__init__(parent)
         self.schema = schema
+        self.model_data = model_data
         self.simulation_request_entries = {}
+        self.simulation_state = simulation_state
+        self.simulation_request_field_values = simulation_request_field_values or {}
+        self.on_simulation_state_changed = on_simulation_state_changed
+        self.on_field_changed = on_field_changed
         self.create_widgets()
 
     def create_widgets(self):
@@ -41,7 +62,7 @@ class SimulationPage(ttk.Frame):
         self.notebook.grid(row=0, column=0, sticky="nsew")
 
         self.create_settings_tab()
-        self.create_results_tab()
+        self.update_results_tab()
 
         # Button Frame
         # ==========================
@@ -106,8 +127,12 @@ class SimulationPage(ttk.Frame):
             )
             field_label.grid(row=row, column=0, sticky="w")
 
+            remembered_value = self.simulation_request_field_values.get(field_name)
+
             if field_schema["type"] == ENUM_PROPERTY_TYPE:
-                control_strategy_variable = tk.StringVar(value=field_schema["values"][0])
+                control_strategy_variable = tk.StringVar(
+                    value=remembered_value or field_schema["values"][0]
+                )
                 entry = ttk.Combobox(
                     self.settings_frame,
                     textvariable=control_strategy_variable,
@@ -116,6 +141,12 @@ class SimulationPage(ttk.Frame):
                     width=INPUT_WIDTH,
                 )
                 entry.variable = control_strategy_variable
+                entry.bind(
+                    "<<ComboboxSelected>>",
+                    lambda event, field_name=field_name, entry=entry: self.commit_field(
+                        field_name, entry
+                    ),
+                )
             else:
                 validate_command = (self.register(validate_number), "%P")
                 entry = ttk.Entry(
@@ -123,6 +154,22 @@ class SimulationPage(ttk.Frame):
                     width=INPUT_WIDTH,
                     validate="key",
                     validatecommand=validate_command,
+                )
+
+                if remembered_value is not None:
+                    entry.insert(0, remembered_value)
+
+                entry.bind(
+                    "<FocusOut>",
+                    lambda event, field_name=field_name, entry=entry: self.commit_field(
+                        field_name, entry
+                    ),
+                )
+                entry.bind(
+                    "<Return>",
+                    lambda event, field_name=field_name, entry=entry: self.commit_field(
+                        field_name, entry
+                    ),
                 )
 
             entry.grid(row=row, column=1, sticky="w")
@@ -136,14 +183,99 @@ class SimulationPage(ttk.Frame):
         # Display widget:
         self.settings_frame.grid(row=0, column=0, sticky="new")
 
-    def create_results_tab(self):
+    def commit_field(self, field_name, entry):
+        if self.on_field_changed is not None:
+            self.on_field_changed(field_name, entry.get())
+
+    def update_results_tab(self):
+        # Rebuilt every time a run finishes (or on first display, when
+        # there's nothing yet) -- clear whatever was there before.
+        for widget in self.results_tab.winfo_children():
+            widget.destroy()
+
         # Grid:
+        self.results_tab.rowconfigure(0, weight=1)
         self.results_tab.columnconfigure(0, weight=1)
 
-        self.no_results_label = ttk.Label(
-            self.results_tab, text="No results yet — run a simulation to see results here."
+        if self.simulation_state is None:
+            no_results_label = ttk.Label(
+                self.results_tab, text="No results yet — run a simulation to see results here."
+            )
+            no_results_label.grid(row=0, column=0, sticky="nw", padx=PAD, pady=PAD)
+            return
+
+        summary_frame = ttk.LabelFrame(self.results_tab, text="Run Summary", padding=PAD)
+        summary_frame.grid(row=0, column=0, sticky="new", padx=PAD, pady=PAD)
+        summary_frame.columnconfigure(1, weight=1)
+
+        request = self.simulation_state.simulation_request
+        request_fields = self.schema.get_simulation_request_schema()["properties"]
+
+        row = 0
+
+        for field_name, field_schema in request_fields.items():
+            label = ttk.Label(summary_frame, text=field_name.replace("_", " ").title())
+            label.grid(row=row, column=0, sticky="w")
+
+            value_text = f"{getattr(request, field_name)} {field_schema.get('unit', '')}".strip()
+            value_label = ttk.Label(summary_frame, text=value_text)
+            value_label.grid(row=row, column=1, sticky="w", padx=(PAD, 0))
+            row += 1
+
+        simulated_time_label = ttk.Label(summary_frame, text="Simulated Time Reached")
+        simulated_time_label.grid(row=row, column=0, sticky="w")
+        simulated_time_value = ttk.Label(summary_frame, text=f"{self.simulation_state.clock} s")
+        simulated_time_value.grid(row=row, column=1, sticky="w", padx=(PAD, 0))
+        row += 1
+
+        if not has_quality_reading_entity(self.model_data, self.schema):
+            no_inspection_label = ttk.Label(
+                summary_frame,
+                text=(
+                    "No Inspection Entity in this model — defective Flow Objects are not "
+                    "filtered out, they continue through the rest of the process."
+                ),
+                wraplength=WIDE_WRAP_LENGTH,
+            )
+            no_inspection_label.grid(row=row, column=0, columnspan=2, sticky="w")
+            row += 1
+
+        separator = ttk.Separator(summary_frame, orient="horizontal")
+        separator.grid(row=row, column=0, columnspan=2, sticky="ew", pady=PAD)
+        row += 1
+
+        # Generic (event_type -> count) breakdown -- a new event_type
+        # introduced later shows up automatically here, no code change.
+        event_counts = summarize_event_log(self.simulation_state)
+
+        for event_type, count in event_counts.items():
+            label = ttk.Label(summary_frame, text=event_type.replace("_", " ").title())
+            label.grid(row=row, column=0, sticky="w")
+            value_label = ttk.Label(summary_frame, text=str(count))
+            value_label.grid(row=row, column=1, sticky="w", padx=(PAD, 0))
+            row += 1
+
+        export_button = ttk.Button(
+            self.results_tab,
+            text="Export CSV",
+            width=BUTTON_WIDTH,
+            command=self.export_csv,
         )
-        self.no_results_label.grid(row=0, column=0, sticky="w")
+        export_button.grid(row=1, column=0, sticky="se", padx=PAD, pady=PAD)
+
+    def export_csv(self):
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv")],
+            initialfile="event_log.csv",
+            title="Export Event Log",
+        )
+
+        if not file_path:
+            return
+
+        export_event_log_to_csv(self.simulation_state, file_path)
+        messagebox.showinfo("Export Event Log", f"Event log exported to {file_path}.")
 
     def start_simulation(self):
         fields = self.schema.get_simulation_request_schema()["properties"]
@@ -151,6 +283,10 @@ class SimulationPage(ttk.Frame):
 
         for field_name, field_schema in fields.items():
             raw_value = self.simulation_request_entries[field_name].get()
+            # Don't rely solely on FocusOut having already fired for every
+            # field by the time this runs (e.g. editing a field and then
+            # clicking Start Simulation without focus ever fully leaving it).
+            self.commit_field(field_name, self.simulation_request_entries[field_name])
 
             if field_schema["type"] == ENUM_PROPERTY_TYPE:
                 values_by_field_name[field_name] = raw_value
@@ -161,7 +297,7 @@ class SimulationPage(ttk.Frame):
                     values_by_field_name[field_name] = None
 
         try:
-            build_simulation_request(
+            simulation_request = build_simulation_request(
                 values_by_field_name["run_duration"],
                 values_by_field_name["replications"],
                 values_by_field_name["random_seed"],
@@ -173,3 +309,25 @@ class SimulationPage(ttk.Frame):
                 "Simulation Request error",
                 "\n".join(issue["message"] for issue in error.issues),
             )
+            return
+
+        try:
+            simulation_model = build_simulation_model(self.model_data, self.schema)
+        except ModelValidationError as error:
+            messagebox.showerror(
+                "Model error",
+                "\n".join(issue["message"] for issue in error.issues),
+            )
+            return
+
+        simulation_state = build_simulation_state(simulation_model, simulation_request)
+        schedule_flow_object_generation(simulation_state)
+        schedule_process_supply_replenishment(simulation_state)
+        run_simulation(simulation_state)
+
+        self.simulation_state = simulation_state
+        self.update_results_tab()
+        self.notebook.select(self.results_tab)
+
+        if self.on_simulation_state_changed is not None:
+            self.on_simulation_state_changed(simulation_state)

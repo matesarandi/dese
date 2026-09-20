@@ -100,6 +100,25 @@ def absorbs_flow_objects(entity, model_data, schema):
     return entity_schema.get("simulation_role", {}).get("absorbs_flow_objects", False)
 
 
+def reads_flow_object_states(entity, model_data, schema):
+    entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
+
+    if entity_schema is None:
+        return False
+
+    return bool(entity_schema.get("rule_eligibility", {}).get("reads_flow_object_states"))
+
+
+def has_quality_reading_entity(model_data, schema):
+    # Not hardcoded to "Inspection" by name -- any entity type the schema
+    # declares as able to read Flow Object state (reads_flow_object_states)
+    # counts, so this stays correct if that capability is ever granted to
+    # another entity type.
+    return any(
+        reads_flow_object_states(entity, model_data, schema) for entity in model_data["entities"]
+    )
+
+
 def get_processing_duration_property(entity, model_data, schema):
     # The property name (e.g. "processing_time") holding how long this
     # Entity takes per Flow Object -- None for Entities that don't do timed,

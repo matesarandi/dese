@@ -1,4 +1,4 @@
-from dese.engine.event_log import get_entity_log_fields, get_flow_object_log_fields, log_event
+from dese.engine.event_log import get_entity_log_fields, log_event
 from dese.engine.event_loop import EVENT_HANDLERS, schedule_event
 
 # Each function ranks the waiting list by one criterion; dispatch_priority
@@ -115,6 +115,7 @@ def apply_wear_and_rules(state, entity_id, instance_id):
 
     entity_state = state.entity_states[entity_id]
     entity_state.cycles_since_maintenance += 1
+    instance = state.flow_object_instances[instance_id]
 
     maintenance_rule = rule_bundle.get("maintenance")
     maintenance_triggered = (
@@ -138,12 +139,25 @@ def apply_wear_and_rules(state, entity_id, instance_id):
             if state.random_generator.random() < failure_probability:
                 request_maintenance_resource(state, entity_id, "unplanned")
 
+                # The Entity broke down while actively working on this
+                # instance -- a direct consequence, distinct from
+                # BaselineScrap's own failure-independent roll below (which
+                # is skipped once this already applies). Not its own log
+                # event -- "becoming scrap" isn't a real-world event, just a
+                # state change that the next flow_object_exited/completed/
+                # routed row already shows (quality/cause come from
+                # get_flow_object_log_fields), same time, next sequence.
+                if instance.quality != "scrap":
+                    instance.quality = "scrap"
+                    instance.scrap_cause = "entity_failure"
+
     # Baseline Scrap affects the just-finished Flow Object's own quality --
     # independent of whether the Entity itself is about to go down for
-    # Maintenance/Failure, so it's always checked, not skipped above.
+    # Maintenance/Failure, so it's always checked, not skipped above (unless
+    # entity_failure already scrapped this same instance this cycle).
     baseline_scrap_rule = rule_bundle.get("baseline_scrap")
 
-    if baseline_scrap_rule is not None:
+    if baseline_scrap_rule is not None and instance.quality != "scrap":
         scrap_probability = min(
             1,
             baseline_scrap_rule["base_scrap_probability"]
@@ -152,11 +166,5 @@ def apply_wear_and_rules(state, entity_id, instance_id):
         )
 
         if state.random_generator.random() < scrap_probability:
-            state.flow_object_instances[instance_id].quality = "scrap"
-            log_event(
-                state,
-                "flow_object_scrapped",
-                **get_entity_log_fields(state, entity_id),
-                **get_flow_object_log_fields(state, instance_id),
-                cycles_since_maintenance=entity_state.cycles_since_maintenance,
-            )
+            instance.quality = "scrap"
+            instance.scrap_cause = "baseline_variation"
