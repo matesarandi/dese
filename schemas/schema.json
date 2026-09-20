@@ -124,8 +124,8 @@
       },
       "control_strategy": {
         "type": "enum",
-        "values": ["Push", "Pull"],
-        "description": "Push: upstream sends a Flow Object downstream as soon as it's done. Pull: downstream only receives one when it requests it."
+        "values": ["Push"],
+        "description": "Flow Objects are pushed downstream as soon as an upstream Entity is done with them. (Pull is planned for a future version.)"
       }
     }
   },
