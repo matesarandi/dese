@@ -61,6 +61,15 @@ WIDE_WRAP_LENGTH = 900
 PROPERTY_ROW_HEIGHT = 3
 
 # ==========================
+# Simulation Engine
+# ==========================
+
+# SimulationRequest.run_duration is in hours (a more natural unit for a
+# whole run), while every other model time (processing_time, etc.) is in
+# seconds -- the event loop converts once, here.
+SECONDS_PER_HOUR = 3600
+
+# ==========================
 # Schema Versioning
 # ==========================
 

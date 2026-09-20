@@ -1,7 +1,7 @@
 import random
 from dataclasses import dataclass, field
 
-from dese.core.model import holds_flow_object_queue
+from dese.core.model import get_processing_duration_property, holds_flow_object_queue
 
 
 @dataclass
@@ -15,12 +15,16 @@ class FlowObjectInstance:
 
 @dataclass
 class EntityState:
-    # slots holds one entry per Flow Object currently at this Entity (its
-    # length is checked against the Entity's own "capacity" property by the
-    # event loop -- not pre-sized here, since nothing is in progress yet at
-    # t=0). Each entry: {"flow_object_instance_id": ..., "last_flow_object_type": ...}
-    # -- changeover_time is tracked per slot (see Processing.changeover_time),
-    # not per Entity, since capacity > 1 means independent parallel resources.
+    # slots is fixed-size, one entry per unit of the Entity's own "capacity"
+    # -- only for Entities that do timed processing (Processing/Inspection/
+    # Transport; see get_processing_duration_property), empty [] otherwise
+    # (Storage/Process Supply/Process Sink don't have "slots" in this sense).
+    # A slot's identity (its position in the list) stays stable across
+    # occupants: {"flow_object_instance_id": None-or-id, "last_flow_object_type":
+    # ...} -- last_flow_object_type persists even while the slot is empty, so
+    # the NEXT occupant's changeover_time can still be compared against it
+    # (changeover is tracked per slot, not per Entity, since capacity > 1
+    # means independent parallel resources -- e.g. separate robot arms).
     status: str = "idle"
     slots: list = field(default_factory=list)
     cycles_since_maintenance: float = 0
@@ -48,11 +52,27 @@ class SimulationState:
     maintenance_resource_state: MaintenanceResourceState
 
 
+def build_entity_state(entity, domain_only_model_data, schema):
+    duration_property = get_processing_duration_property(entity, domain_only_model_data, schema)
+
+    if duration_property is None:
+        return EntityState()
+
+    capacity = int(entity["properties"]["capacity"])
+    slots = [
+        {"flow_object_instance_id": None, "last_flow_object_type": None}
+        for _ in range(capacity)
+    ]
+
+    return EntityState(slots=slots)
+
+
 def build_simulation_state(simulation_model, simulation_request):
     domain_only_model_data = {"domain": simulation_model.domain}
 
     entity_states = {
-        entity_id: EntityState() for entity_id in simulation_model.entities_by_id
+        entity_id: build_entity_state(entity, domain_only_model_data, simulation_model.schema)
+        for entity_id, entity in simulation_model.entities_by_id.items()
     }
 
     storage_states = {

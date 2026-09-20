@@ -156,7 +156,8 @@
             "position": "center"
           },
           "simulation_role": {
-            "accepts_flow_object_entry": true
+            "accepts_flow_object_entry": true,
+            "processing_duration_property": "processing_time"
           },
           "rule_eligibility": {
             "supports_failure": true,
@@ -190,6 +191,9 @@
           "hierarchy": {
             "role": "main",
             "position": "center"
+          },
+          "simulation_role": {
+            "processing_duration_property": "inspection_time"
           },
           "rule_eligibility": {
             "supports_failure": true,
@@ -246,6 +250,9 @@
           "hierarchy": {
             "role": "main",
             "position": "center"
+          },
+          "simulation_role": {
+            "processing_duration_property": "transport_time"
           },
           "rule_eligibility": {
             "supports_failure": true
