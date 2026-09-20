@@ -21,10 +21,13 @@ class EntityState:
     # (Storage/Process Supply/Process Sink don't have "slots" in this sense).
     # A slot's identity (its position in the list) stays stable across
     # occupants: {"flow_object_instance_id": None-or-id, "last_flow_object_type":
-    # ...} -- last_flow_object_type persists even while the slot is empty, so
-    # the NEXT occupant's changeover_time can still be compared against it
-    # (changeover is tracked per slot, not per Entity, since capacity > 1
-    # means independent parallel resources -- e.g. separate robot arms).
+    # ..., "processing_started": bool} -- last_flow_object_type persists even
+    # while the slot is empty, so the NEXT occupant's changeover_time can
+    # still be compared against it (changeover is tracked per slot, not per
+    # Entity, since capacity > 1 means independent parallel resources -- e.g.
+    # separate robot arms). processing_started is False while an occupant is
+    # seated but stalled waiting on Process Supply material -- see
+    # processing.retry_stalled_slots, called on every replenishment.
     status: str = "idle"
     slots: list = field(default_factory=list)
     cycles_since_maintenance: float = 0
@@ -60,7 +63,11 @@ def build_entity_state(entity, domain_only_model_data, schema):
 
     capacity = int(entity["properties"]["capacity"])
     slots = [
-        {"flow_object_instance_id": None, "last_flow_object_type": None}
+        {
+            "flow_object_instance_id": None,
+            "last_flow_object_type": None,
+            "processing_started": False,
+        }
         for _ in range(capacity)
     ]
 

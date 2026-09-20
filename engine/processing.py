@@ -1,6 +1,7 @@
 from dese.core.model import get_processing_duration_property
 from dese.engine.event_loop import EVENT_HANDLERS, schedule_event
 from dese.engine.movement import enter_entity, find_empty_slot
+from dese.engine.process_supply import consume_supply, has_sufficient_supply
 
 
 def find_occupied_slot(entity_state, instance_id):
@@ -10,9 +11,15 @@ def find_occupied_slot(entity_state, instance_id):
 
 
 def start_processing(state, entity_id, instance_id):
-    # Process Supply consumption (process_requirements) isn't checked here
-    # yet -- that's its own, not-yet-built layer; for now, starting only
-    # depends on the Entity already having a free slot for instance_id.
+    instance = state.flow_object_instances[instance_id]
+
+    if not has_sufficient_supply(state, entity_id, instance.flow_object_type):
+        # Stays seated with processing_started still False -- retried by
+        # retry_stalled_slots whenever a relevant Process Supply replenishes.
+        return
+
+    consume_supply(state, entity_id, instance.flow_object_type)
+
     entity = state.simulation_model.entities_by_id[entity_id]
     domain_only_model_data = {"domain": state.simulation_model.domain}
     duration_property = get_processing_duration_property(
@@ -22,7 +29,6 @@ def start_processing(state, entity_id, instance_id):
 
     entity_state = state.entity_states[entity_id]
     slot = find_occupied_slot(entity_state, instance_id)
-    instance = state.flow_object_instances[instance_id]
 
     # changeover_time only exists on Processing -- Inspection/Transport get
     # None here and never pay it.
@@ -36,6 +42,7 @@ def start_processing(state, entity_id, instance_id):
     ):
         changeover = changeover_time
 
+    slot["processing_started"] = True
     entity_state.status = "busy"
 
     schedule_event(
@@ -44,6 +51,14 @@ def start_processing(state, entity_id, instance_id):
         "finish_processing",
         {"entity_id": entity_id, "instance_id": instance_id},
     )
+
+
+def retry_stalled_slots(state, entity_id):
+    for slot in state.entity_states[entity_id].slots:
+        instance_id = slot["flow_object_instance_id"]
+
+        if instance_id is not None and not slot["processing_started"]:
+            start_processing(state, entity_id, instance_id)
 
 
 def handle_finish_processing(state, data):

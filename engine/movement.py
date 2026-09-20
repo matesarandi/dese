@@ -20,6 +20,7 @@ def enter_entity(state, instance_id, entity_id):
         return False
 
     slot["flow_object_instance_id"] = instance_id
+    slot["processing_started"] = False
     state.flow_object_instances[instance_id].current_entity_id = entity_id
 
     return True
