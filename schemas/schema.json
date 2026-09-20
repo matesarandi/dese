@@ -374,6 +374,7 @@
           "properties": {
             "maintenance_interval": {
               "type": "number",
+              "exclusive_min": 0,
               "unit": "cycles",
               "description": "Number of cycles since the last maintenance or repair after which the Entity proactively enters planned maintenance."
             },
