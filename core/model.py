@@ -80,6 +80,17 @@ def is_supply_source(entity, model_data, schema):
     return entity_schema.get("simulation_role", {}).get("is_supply_source", False)
 
 
+def holds_flow_object_queue(entity, model_data, schema):
+    entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
+
+    if entity_schema is None:
+        return False
+
+    return entity_schema.get("simulation_role", {}).get(
+        "holds_flow_object_queue", False
+    )
+
+
 def get_output_relationships(entity_id, model_data):
     return [
         relationship

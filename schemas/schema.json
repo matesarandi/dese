@@ -219,16 +219,14 @@
             "role": "main",
             "position": "center"
           },
+          "simulation_role": {
+            "holds_flow_object_queue": true
+          },
           "properties": {
             "capacity": {
               "type": "number",
               "unit": "piece",
               "description": "Maximum number of Flow Objects that can be stored."
-            },
-            "initial_inventory": {
-              "type": "number",
-              "unit": "piece",
-              "description": "Initial quantity of Flow Objects in the Storage."
             },
             "queue_rule": {
               "type": "enum",
