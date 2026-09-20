@@ -232,9 +232,9 @@
             },
             "queue_rule": {
               "type": "enum",
-              "values": ["FIFO", "LIFO"],
+              "values": ["FIFO"],
               "default": "FIFO",
-              "description": "Rule determining the order in which Flow Objects leave the Storage."
+              "description": "Rule determining the order in which Flow Objects leave the Storage. (LIFO is planned for a future version.)"
             }
           }
         },
