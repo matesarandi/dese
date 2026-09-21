@@ -433,6 +433,25 @@ def check_maintenance_resource_properties(model_data, schema):
 
 
 def check_routing_completeness(model_data, schema):
+    # evaluate_routing checks scope candidates in get_routing_scope_candidates'
+    # own order (entity states first, then any flow_object states the
+    # Entity type can read) and returns the FIRST scope that has a
+    # condition for the flow's current value -- a scope with no condition
+    # for the current value simply falls through to the next one. That
+    # means only the LAST candidate scope needs to cover every one of its
+    # values: it's the final fallback with nothing left to fall through
+    # to, so full coverage there alone already guarantees every possible
+    # (scope, value) combination resolves to SOME target. Earlier scopes
+    # are optional overrides -- e.g. an Inspection's entity.status is
+    # checked before flow_object.quality, so a single "failed -> Scrap"
+    # condition can override the failed case while every OTHER status
+    # falls through and lets quality decide, without needing (and
+    # nothing forcing) idle/busy/blocked/down to be individually assigned
+    # too. Requiring every scope to independently cover all its own
+    # values (the old behavior) forced exactly that kind of unnecessary
+    # full status coverage, which -- since entity scopes are always
+    # checked first -- made flow_object.quality conditions permanently
+    # unreachable at runtime for every model that followed the pattern.
     issues = []
 
     for entity in model_data["entities"]:
@@ -444,21 +463,25 @@ def check_routing_completeness(model_data, schema):
 
         scope_candidates = get_routing_scope_candidates(entity, model_data, schema)
 
-        for scope, variable in scope_candidates:
-            for value in get_routing_scope_values(scope, variable, schema):
-                owner = get_routing_condition_owner(model_data, entity_id, scope, variable, value)
+        if not scope_candidates:
+            continue
 
-                if owner is None:
-                    scope_label = get_routing_scope_label(scope, variable)
-                    issues.append(
-                        {
-                            "severity": "error",
-                            "message": (
-                                f'Entity "{entity["name"]}" Routing: no output assigned '
-                                f'for {scope_label} = "{value}".'
-                            ),
-                        }
-                    )
+        last_scope, last_variable = scope_candidates[-1]
+
+        for value in get_routing_scope_values(last_scope, last_variable, schema):
+            owner = get_routing_condition_owner(model_data, entity_id, last_scope, last_variable, value)
+
+            if owner is None:
+                scope_label = get_routing_scope_label(last_scope, last_variable)
+                issues.append(
+                    {
+                        "severity": "error",
+                        "message": (
+                            f'Entity "{entity["name"]}" Routing: no output assigned '
+                            f'for {scope_label} = "{value}".'
+                        ),
+                    }
+                )
 
     return issues
 
