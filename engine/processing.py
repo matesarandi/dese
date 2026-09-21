@@ -305,41 +305,64 @@ def retry_upstream(state, entity_id):
 
     input_relationships = state.simulation_model.input_relationships_by_id[entity_id]
 
-    if len(input_relationships) != 1:
-        # No single real upstream Entity to retry (e.g. a Storage merging
-        # several inputs) -- not handled yet, same scope limit as elsewhere.
+    # entity_id just freed exactly one slot, so at most one waiting
+    # instance can move into it right now -- gather the oldest-waiting
+    # candidate from EACH upstream source (a Storage's front-of-queue
+    # item, or a slot-based Entity's oldest finished-but-blocked item),
+    # then advance only the overall oldest one. Same "earliest created
+    # goes first" fairness rule already used within a single Entity's own
+    # slots (see below) and by order_storage admission, generalized across
+    # potentially MULTIPLE upstream sources -- a genuine merge point (e.g.
+    # two branches feeding one downstream Processing entity; Processing's
+    # own input_max is 7, so this is a fully valid, reachable topology,
+    # not just the single-input case this used to be limited to).
+    candidates = []
+
+    for relationship in input_relationships:
+        upstream_entity_id = relationship["source"]
+        upstream_storage_queue = state.storage_states.get(upstream_entity_id)
+
+        if upstream_storage_queue is not None:
+            if upstream_storage_queue:
+                instance_id = upstream_storage_queue[0]
+                candidates.append((upstream_entity_id, instance_id, True))
+            continue
+
+        upstream_entity_state = state.entity_states.get(upstream_entity_id)
+
+        if upstream_entity_state is None:
+            continue
+
+        # With capacity > 1, more than one slot at the SAME upstream
+        # Entity can be finished-but-blocked at once -- picking by slot
+        # INDEX (whichever happens to come first in the array) rather than
+        # by how long each has actually been waiting lets a slot that
+        # keeps getting freshly refilled (and re-blocked) perpetually win
+        # the race over one that's been stuck since much earlier, starving
+        # it indefinitely.
+        blocked_instance_ids = [
+            slot["flow_object_instance_id"]
+            for slot in upstream_entity_state.slots
+            if slot["flow_object_instance_id"] is not None and slot["finished"]
+        ]
+
+        if blocked_instance_ids:
+            oldest_instance_id = min(
+                blocked_instance_ids, key=lambda iid: state.flow_object_instances[iid].created_at
+            )
+            candidates.append((upstream_entity_id, oldest_instance_id, False))
+
+    if not candidates:
         return
 
-    upstream_entity_id = input_relationships[0]["source"]
-    upstream_storage_queue = state.storage_states.get(upstream_entity_id)
+    upstream_entity_id, instance_id, is_storage = min(
+        candidates, key=lambda candidate: state.flow_object_instances[candidate[1]].created_at
+    )
 
-    if upstream_storage_queue is not None:
+    if is_storage:
         try_release_from_storage(state, upstream_entity_id)
-        return
-
-    upstream_entity_state = state.entity_states.get(upstream_entity_id)
-
-    if upstream_entity_state is None:
-        return
-
-    # With capacity > 1, more than one slot can be finished-but-blocked at
-    # once -- picking by slot INDEX (whichever happens to come first in the
-    # array) rather than by how long each has actually been waiting lets a
-    # slot that keeps getting freshly refilled (and re-blocked) perpetually
-    # win the race over one that's been stuck since much earlier, starving
-    # it indefinitely. Same "earliest created goes first" fairness rule
-    # order_storage admission already uses (see admit_from_order_storage).
-    blocked_instance_ids = [
-        slot["flow_object_instance_id"]
-        for slot in upstream_entity_state.slots
-        if slot["flow_object_instance_id"] is not None and slot["finished"]
-    ]
-
-    if blocked_instance_ids:
-        oldest_instance_id = min(
-            blocked_instance_ids, key=lambda iid: state.flow_object_instances[iid].created_at
-        )
-        try_advance_finished_instance(state, upstream_entity_id, oldest_instance_id)
+    else:
+        try_advance_finished_instance(state, upstream_entity_id, instance_id)
 
 
 def handle_finish_processing(state, data):
