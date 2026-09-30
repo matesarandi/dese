@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .DS_Store
 .claude/
+docs/build/
 audit/01-hardcoded.md
 audit/03-complexity.md
 audit/04-architecture.md
