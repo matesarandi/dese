@@ -1,3 +1,10 @@
+"""The Model Editor's Structure tab: the entity table plus the schema-driven
+property and relationship editors for the selected entity. Widget
+construction (``build_*``/``create_structure_tab``) is pure Tkinter
+layout; the data-driven refresh methods (``update_property_editor``,
+``update_relationship_*``, ``populate_entity_table``) are where this
+mixin's real logic lives.
+"""
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk
@@ -337,6 +344,9 @@ class StructureTabMixin:
         self.end_of_process_checkbutton.grid(row=0, column=0, sticky="w")
 
     def update_property_editor(self):
+        """Rebuilds the property editor panel for ``selected_entity``, one
+        row per property in its type's schema -- entirely schema-driven,
+        so a new entity property needs no UI code here to appear."""
         if self.selected_entity is None:
             return
 
@@ -439,6 +449,11 @@ class StructureTabMixin:
         bind_canvas_mousewheel(self.property_canvas)
 
     def update_relationship_editor(self):
+        """Rebuilds the relationship editor panel for ``selected_entity``:
+        the input/output count spinboxes (bounded by its type's
+        input_min/max and output_min/max) and, via
+        ``update_relationship_inputs``/``update_relationship_outputs``,
+        the comboboxes themselves."""
         # Clear existing relationship widgets:
         for widget in self.relationship_content.winfo_children():
             widget.destroy()
@@ -464,7 +479,7 @@ class StructureTabMixin:
         self.input_count = max(input_min, len(input_relationships))
         self.output_count = max(output_min, len(output_relationships))
 
-        # Input count:
+        # Input Count
         # ==========================
 
         # Widgets:
@@ -492,7 +507,7 @@ class StructureTabMixin:
         self.input_count_spinbox.set(self.input_count)
         self.input_count_spinbox.grid(row=0, column=1, sticky="w")
 
-        # Output count:
+        # Output Count
         # ==========================
 
         # Widgets:
@@ -534,6 +549,9 @@ class StructureTabMixin:
         bind_canvas_mousewheel(self.relationship_canvas)
 
     def update_relationship_inputs(self):
+        """Rebuilds the input-relationship comboboxes for ``selected_entity``,
+        one per current input slot (pre-filled with any existing
+        relationship's source, choices from ``get_allowed_entities``)."""
         # Clear existing input widgets:
         for widget in self.input_list_frame.winfo_children():
             widget.destroy()
@@ -596,6 +614,8 @@ class StructureTabMixin:
             combobox.grid(row=index + 1, column=1, sticky="w")
 
     def update_relationship_outputs(self):
+        """Rebuilds the output-relationship comboboxes for ``selected_entity``,
+        mirroring ``update_relationship_inputs`` for the output side."""
         # Clear existing output widgets:
         for widget in self.output_list_frame.winfo_children():
             widget.destroy()
@@ -658,6 +678,9 @@ class StructureTabMixin:
             combobox.grid(row=index, column=1, sticky="w")
 
     def populate_entity_table(self):
+        """Fills the (assumed-empty) entity table with one row per entity
+        in ``model_data``, including its resolved input/output entity
+        names and main/secondary role."""
         for entity in self.model_data["entities"]:
             input_names = [
                 self.get_entity_name(relationship["source"])
@@ -691,6 +714,8 @@ class StructureTabMixin:
             )
 
     def refresh_entity_table(self):
+        """Clears and repopulates the entity table, preserving the current
+        selection (by entity id) across the rebuild."""
         selected_entity_id = None
 
         selected_item = self.entity_table.selection()

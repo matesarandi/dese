@@ -1,3 +1,8 @@
+"""The Model Editor's Rules tab: per-entity Routing (a checkbox matrix over
+scope/value candidates), Failure/Maintenance/BaselineScrap property forms,
+and the model-wide Maintenance Resource editor (capacity + a reorderable
+dispatch_priority list).
+"""
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk
@@ -45,12 +50,16 @@ class RulesTabMixin:
     owns (model_data, schema, rules_tab, etc.)."""
 
     def get_routing_target_label(self, target_id):
-        # The virtual End of Process destination isn't a real Entity, so
-        # there's no name to look up for it — its label is derived from
-        # the same field name as the target value itself
-        # (END_OF_PROCESS_ROUTING_TARGET), not a separately hardcoded
-        # string. Title-cased word by word, except "of" — plain .title()
-        # would capitalize that too ("End Of Process").
+        """Returns the display label for one routing target: the entity's
+        name, or "End Of Process" for the virtual terminus target.
+
+        The virtual End of Process destination isn't a real Entity, so
+        there's no name to look up for it — its label is derived from
+        the same field name as the target value itself
+        (END_OF_PROCESS_ROUTING_TARGET), not a separately hardcoded
+        string. Title-cased word by word, except "of" — plain .title()
+        would capitalize that too ("End Of Process").
+        """
         if target_id == END_OF_PROCESS_ROUTING_TARGET:
             return " ".join(
                 word if word == "of" else word.capitalize()
@@ -60,12 +69,16 @@ class RulesTabMixin:
         return self.get_entity_name(target_id)
 
     def refresh_rules_tab(self):
-        # Rebuilding destroys and recreates every widget below, which
-        # briefly collapses the scrollable content to near-zero height —
-        # the canvas clamps its scroll position to the top for that instant
-        # and doesn't return on its own once the content regrows. Save and
-        # restore it around the rebuild so a mid-scroll selection doesn't
-        # visibly jump the page back to the top.
+        """Rebuilds both Rules tab sections (per-entity rules + Maintenance
+        Resource), preserving the scroll position across the rebuild.
+
+        Rebuilding destroys and recreates every widget below, which
+        briefly collapses the scrollable content to near-zero height —
+        the canvas clamps its scroll position to the top for that instant
+        and doesn't return on its own once the content regrows. Save and
+        restore it around the rebuild so a mid-scroll selection doesn't
+        visibly jump the page back to the top.
+        """
         scroll_position = self.rules_canvas.yview()[0]
 
         self.update_entity_rules_frame()
@@ -157,6 +170,11 @@ class RulesTabMixin:
         self.refresh_rules_tab()
 
     def update_entity_rules_frame(self):
+        """Rebuilds the per-entity "AT ..." rule blocks, one per entity
+        eligible for Routing (a decision point), Failure/Maintenance, or
+        BaselineScrap -- whichever apply, nested inside that entity's
+        single shared block.
+        """
         # Clear existing widgets:
         for widget in self.entity_rules_frame.winfo_children():
             widget.destroy()
@@ -283,11 +301,17 @@ class RulesTabMixin:
                 row += 1
 
     def render_routing_matrix(self, parent_frame, entity, entity_id):
-        # An Entity's own state is always a candidate; a Flow Object state
-        # is only a candidate where this Entity type actually has a way to
-        # read it (see get_routing_scope_candidates). Each candidate is one
-        # row of the matrix below; each current output is one column, plus
-        # a leading "unassigned" column.
+        """Renders ``entity_id``'s Routing checkbox matrix into
+        ``parent_frame``: one row per (scope, value) candidate, one column
+        per possible output target, a checked box meaning that value is
+        assigned to that column's output (see ``toggle_routing_condition_owner``).
+
+        An Entity's own state is always a candidate; a Flow Object state
+        is only a candidate where this Entity type actually has a way to
+        read it (see get_routing_scope_candidates). Each candidate is one
+        row of the matrix below; each current output is one column, plus
+        a leading "unassigned" column.
+        """
         scope_candidates = get_routing_scope_candidates(entity, self.model_data, self.schema)
 
         # A real output relationship, or the virtual "End of Process"
@@ -437,10 +461,13 @@ class RulesTabMixin:
                 row += 1
 
     def toggle_routing_condition_owner(self, entity_id, scope, variable, equals, target_id):
-        # Checking a box makes that output the owner (taking it away from
-        # wherever it was); checking the box that's already checked
-        # unassigns it — there's no separate "unassigned" control, the box
-        # itself is the whole interaction.
+        """Routing matrix checkbox click handler for one (scope, value, target) cell.
+
+        Checking a box makes that output the owner (taking it away from
+        wherever it was); checking the box that's already checked
+        unassigns it — there's no separate "unassigned" control, the box
+        itself is the whole interaction.
+        """
         current_owner = get_routing_condition_owner(
             self.model_data, entity_id, scope, variable, equals
         )
@@ -449,6 +476,9 @@ class RulesTabMixin:
         self.commit_routing_condition_owner(entity_id, scope, variable, equals, new_owner)
 
     def commit_routing_condition_owner(self, entity_id, scope, variable, equals, target_id):
+        """Applies one Routing condition reassignment to model_data and
+        refreshes the tab so the matrix reflects it immediately.
+        """
         set_routing_condition_owner(
             self.model_data, entity_id, scope, variable, equals, target_id
         )
@@ -464,10 +494,18 @@ class RulesTabMixin:
     def render_rule_property_form(
         self, parent_frame, entity_id, rule_type, get_parameter, set_parameter
     ):
-        # Shared by Failure and Maintenance — both are just a flat list of
-        # numeric fields for one Entity, read from the same rule_schemas
-        # shape. Failure/Maintenance differ only in which rule_type they
-        # name and which get/set pair they read and write through.
+        """Renders a flat numeric-field form into ``parent_frame`` for one
+        rule type on ``entity_id`` -- shared by Failure/Maintenance/
+        BaselineScrap, which differ only in which rule_type they name and
+        which get/set parameter pair they read and write through.
+
+        Args:
+            parent_frame: The Tkinter frame to build the form into.
+            entity_id: The entity this rule applies to.
+            rule_type: The rule's schema name, e.g. ``"Failure"``.
+            get_parameter: Getter for one field's current value (e.g. ``get_failure_parameter``).
+            set_parameter: Setter for one field's value (e.g. ``set_failure_parameter``).
+        """
         rule_schema = self.schema.get_rule_schema(self.model_data["domain"], rule_type)
         fields = rule_schema["properties"] if rule_schema else {}
 
@@ -541,6 +579,8 @@ class RulesTabMixin:
             row += 1
 
     def commit_rule_parameter(self, entity_id, field_name, entry, get_parameter, set_parameter):
+        """Rule-field Entry commit handler: converts and stores the
+        entered value, then re-renders the Entry from what was actually saved."""
         new_value = convert_property_value(entry.get(), NUMBER_PROPERTY_TYPE)
 
         if get_parameter(self.model_data, entity_id, field_name) != new_value:
@@ -551,6 +591,10 @@ class RulesTabMixin:
         entry.insert(0, str(get_parameter(self.model_data, entity_id, field_name) or ""))
 
     def update_maintenance_resource_frame(self):
+        """Rebuilds the model-wide Maintenance Resource editor (capacity
+        and the dispatch_priority listbox) -- hidden entirely if no entity
+        in the model is Failure-eligible yet.
+        """
         # Clear existing widgets:
         for widget in self.maintenance_resource_frame.winfo_children():
             widget.destroy()
@@ -694,6 +738,8 @@ class RulesTabMixin:
             row += 1
 
     def commit_maintenance_resource_parameter(self, field_name, entry):
+        """Maintenance Resource field Entry commit handler (e.g. ``capacity``) --
+        mirrors ``commit_rule_parameter`` for the model-wide (not per-entity) rule."""
         new_value = convert_property_value(entry.get(), NUMBER_PROPERTY_TYPE)
 
         if get_maintenance_resource_parameter(self.model_data, field_name) != new_value:
@@ -706,6 +752,12 @@ class RulesTabMixin:
         )
 
     def move_dispatch_priority(self, direction):
+        """"Move up"/"Move down" button handler: swaps the selected
+        dispatch_priority criterion with its neighbor.
+
+        Args:
+            direction: ``-1`` (up) or ``1`` (down).
+        """
         selection = self.dispatch_priority_listbox.curselection()
 
         if not selection:

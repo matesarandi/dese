@@ -1,3 +1,10 @@
+"""SimulationState: the single mutable object a run threads through every
+engine module -- the event queue, the clock, per-entity occupancy, and the
+event log all live here. Built once per run by `build_simulation_state`,
+which derives its per-entity shape (slots vs. a Storage queue vs. a Process
+Supply quantity) purely from the schema-driven model, never from
+hardcoded entity-type names.
+"""
 import random
 from dataclasses import dataclass, field
 
@@ -10,6 +17,9 @@ from dese.core.model import (
 
 @dataclass
 class FlowObjectInstance:
+    """One generated Flow Object's runtime state -- its identity, current
+    quality, and where it currently is in the system."""
+
     id: str
     flow_object_type: str
     created_at: float
@@ -24,6 +34,10 @@ class FlowObjectInstance:
 
 @dataclass
 class EntityState:
+    """One Entity's runtime state: its derived status, its processing slots
+    (if any), and its wear counter.
+    """
+
     # slots is fixed-size, one entry per unit of the Entity's own "capacity"
     # -- only for Entities that do timed processing (Processing/Inspection;
     # see get_processing_duration_property), empty [] otherwise (Storage/
@@ -47,12 +61,23 @@ class EntityState:
 
 @dataclass
 class MaintenanceResourceState:
+    """The shared, model-wide repair/maintenance resource's own occupancy:
+    how many jobs are currently running, and who's queued for the next
+    free slot (see maintenance.request_maintenance_resource)."""
+
     busy_count: int = 0
     waiting_entity_ids: list = field(default_factory=list)
 
 
 @dataclass
 class SimulationState:
+    """Everything a single simulation run needs: the model being simulated,
+    the request parameters, the event queue/clock, and every per-entity/
+    per-Flow-Object piece of runtime state. One instance per run, built by
+    `build_simulation_state` and mutated in place by every engine module
+    for the run's duration.
+    """
+
     simulation_model: object
     simulation_request: object
     clock: float
@@ -79,6 +104,23 @@ class SimulationState:
 
 
 def build_entity_state(entity, domain_only_model_data, schema):
+    """Builds the initial EntityState for one Entity.
+
+    Schema-driven, not type-name-driven: an Entity gets slots only if it
+    has a processing-duration property (Processing/Inspection), regardless
+    of its literal type name -- a Storage/Process Supply/Process Sink gets
+    an empty, slot-less EntityState instead.
+
+    Args:
+        entity: The Entity dict from the model.
+        domain_only_model_data: A ``{"domain": ...}``-only stand-in for the
+            full model, sufficient for the schema lookups this needs.
+        schema: The loaded SchemaLoader.
+
+    Returns:
+        EntityState: idle, with as many empty slots as the Entity's own
+        ``capacity`` property, or none at all if it doesn't process.
+    """
     duration_property = get_processing_duration_property(entity, domain_only_model_data, schema)
 
     if duration_property is None:
@@ -99,6 +141,25 @@ def build_entity_state(entity, domain_only_model_data, schema):
 
 
 def build_simulation_state(simulation_model, simulation_request):
+    """Builds a fresh SimulationState for one run, ready for
+    ``event_loop.run_simulation``.
+
+    Derives per-entity runtime state purely from the schema (slots for
+    processing Entities via ``build_entity_state``, an empty FIFO queue for
+    queue-holding Entities, an initial quantity for Process Supply sources)
+    -- never from hardcoded entity-type names. Seeds ``random_generator``
+    once, from ``simulation_request.random_seed``, for the whole run.
+
+    Args:
+        simulation_model: The built SimulationModel (schema + resolved
+            entities/relationships/rules) to simulate.
+        simulation_request: The run parameters (duration, seed, control
+            strategy).
+
+    Returns:
+        SimulationState: clock at 0, empty event queue/log, ready to have
+        generation/replenishment events scheduled onto it before running.
+    """
     domain_only_model_data = {"domain": simulation_model.domain}
 
     entity_states = {

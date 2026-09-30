@@ -1,7 +1,16 @@
+"""Low-level, reusable slot/queue occupancy primitives shared by every
+behavior layer: placing a Flow Object Instance into an Entity's slot array
+or a Storage's FIFO queue, clearing it back out, and deriving an Entity's
+idle/busy/blocked status from current occupancy. Deliberately has no
+knowledge of Processing/Inspection-specific concerns (starting work,
+changeover) -- see `engine.processing` for that.
+"""
 from dese.engine.event_log import get_entity_log_fields, get_flow_object_log_fields, log_event
 
 
 def find_empty_slot(entity_state):
+    """Returns the first unoccupied slot dict in ``entity_state.slots``, or
+    ``None`` if every slot is occupied."""
     for slot in entity_state.slots:
         if slot["flow_object_instance_id"] is None:
             return slot
@@ -10,6 +19,13 @@ def find_empty_slot(entity_state):
 
 
 def update_entity_status(state, entity_id):
+    """Recomputes and, if changed, logs ``entity_id``'s idle/busy/blocked status.
+
+    Must only be called while the Entity is NOT "failed"/"down" -- callers
+    that could run in that state (e.g. ``enter_entity``, admitting a Flow
+    Object into a broken-down Entity) are responsible for guarding the call
+    themselves.
+    """
     # Derives "idle"/"busy"/"blocked" purely from current occupancy -- the
     # single place that keeps entity_state.status truthful after any slot
     # (or, for Storage, queue) change, instead of it being set once
@@ -64,12 +80,17 @@ def update_entity_status(state, entity_id):
 
 
 def enter_entity(state, instance_id, entity_id):
-    # Pure bookkeeping: occupies the first empty slot at entity_id with
-    # instance_id and updates the instance's location. Does NOT start
-    # processing there -- that's Processing/Inspection-specific
-    # behavior (see processing.start_processing), kept separate so this
-    # stays reusable and dependency-free. Returns False (does nothing) if
-    # there's no free slot.
+    """Seats ``instance_id`` into the first empty slot at ``entity_id``, if any.
+
+    Pure bookkeeping: occupies the slot and updates the instance's
+    location. Does NOT start processing there -- that's Processing/
+    Inspection-specific behavior (see ``processing.start_processing``),
+    kept separate so this stays reusable and dependency-free.
+
+    Returns:
+        bool: True if a slot was free and the instance was seated; False
+        (no-op) if every slot was already occupied.
+    """
     entity_state = state.entity_states[entity_id]
     slot = find_empty_slot(entity_state)
 
@@ -107,13 +128,24 @@ def enter_entity(state, instance_id, entity_id):
 
 
 def clear_slot(state, entity_id, slot, flow_object_type):
-    # The shared "a slot's occupant just left" bookkeeping -- used whether
-    # the instance exited the system (End of Process), got absorbed by a
-    # Process Sink, or moved on to a real downstream Entity. Deliberately
-    # does NOT touch the instance's own current_entity_id -- callers that
-    # move the instance elsewhere (movement.enter_entity) already set that
-    # themselves; callers where the instance truly leaves the system set it
-    # to None right after calling this.
+    """Frees ``slot`` at ``entity_id`` and recomputes its status.
+
+    The shared "a slot's occupant just left" bookkeeping -- used whether
+    the instance exited the system (End of Process), got absorbed by a
+    Process Sink, or moved on to a real downstream Entity. Deliberately
+    does NOT touch the instance's own current_entity_id -- callers that
+    move the instance elsewhere (``enter_entity``) already set that
+    themselves; callers where the instance truly leaves the system set it
+    to None right after calling this.
+
+    Args:
+        state: The mutable SimulationState.
+        entity_id: The Entity the slot belongs to.
+        slot: The specific slot dict being vacated.
+        flow_object_type: The type of the instance that just left, recorded
+            as the slot's ``last_flow_object_type`` for the next occupant's
+            changeover comparison.
+    """
     slot["flow_object_instance_id"] = None
     slot["last_flow_object_type"] = flow_object_type
     slot["finished"] = False
@@ -125,10 +157,17 @@ def clear_slot(state, entity_id, slot, flow_object_type):
 
 
 def enter_storage(state, entity_id, instance_id):
-    # Mirrors enter_entity, but for a Storage's capacity-bounded FIFO queue
-    # instead of a fixed-position slot array -- Storage has no per-slot
-    # identity to track (no changeover, no single occupant to point at), so
-    # a plain list is enough. Returns False (does nothing) if already full.
+    """Appends ``instance_id`` to the back of ``entity_id``'s Storage queue, if there's room.
+
+    Mirrors ``enter_entity``, but for a Storage's capacity-bounded FIFO
+    queue instead of a fixed-position slot array -- Storage has no per-slot
+    identity to track (no changeover, no single occupant to point at), so
+    a plain list is enough.
+
+    Returns:
+        bool: True if there was room and the instance was queued; False
+        (no-op) if the Storage was already at capacity.
+    """
     storage_queue = state.storage_states[entity_id]
     entity = state.simulation_model.entities_by_id[entity_id]
 
@@ -154,11 +193,14 @@ def enter_storage(state, entity_id, instance_id):
 
 
 def leave_storage(state, entity_id, instance_id):
-    # Mirrors clear_slot for a Storage's queue -- instance_id is always the
-    # front of the queue in practice (release order is FIFO, the only
-    # release order Storage supports), but this removes it by value rather
-    # than assuming index 0, so a future non-FIFO release order wouldn't
-    # silently remove the wrong one.
+    """Removes ``instance_id`` from ``entity_id``'s Storage queue and recomputes its status.
+
+    Mirrors ``clear_slot`` for a Storage's queue -- instance_id is always
+    the front of the queue in practice (release order is FIFO, the only
+    release order Storage supports), but this removes it by value rather
+    than assuming index 0, so a future non-FIFO release order wouldn't
+    silently remove the wrong one.
+    """
     state.storage_states[entity_id].remove(instance_id)
 
     entity_state = state.entity_states[entity_id]
@@ -168,13 +210,19 @@ def leave_storage(state, entity_id, instance_id):
 
 
 def admit_from_order_storage(state):
-    # order_storage only ever feeds the beginning_of_process Entity -- it's
-    # the one place with no upstream Entity of its own to occupy a slot at
-    # while waiting (see FlowObjectInstance.current_entity_id staying None
-    # while queued here). Admits as many waiting instances as fit, in their
-    # existing (creation) order, since order_storage is itself append-only.
-    # Returns the admitted instance ids, in order, so the caller can start
-    # processing each of them.
+    """Admits as many waiting Flow Objects from ``state.order_storage`` into
+    the beginning Entity as there's room for.
+
+    order_storage only ever feeds the beginning_of_process Entity -- it's
+    the one place with no upstream Entity of its own to occupy a slot at
+    while waiting (see FlowObjectInstance.current_entity_id staying None
+    while queued here). Admits in existing (creation) order, since
+    order_storage is itself append-only.
+
+    Returns:
+        list[str]: the admitted instance ids, in order, so the caller can
+        start processing each of them.
+    """
     entity_id = state.simulation_model.beginning_entity_id
     admitted_instance_ids = []
 

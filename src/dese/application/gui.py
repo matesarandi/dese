@@ -1,3 +1,8 @@
+"""The application's entry point and top-level window (`DESEApp`): owns the
+schema, the active model's file path, and the three-page navigation (Start
+-> Model Editor -> Simulation). Run directly (``python -m dese.application.gui``)
+to launch the app.
+"""
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -43,6 +48,9 @@ class DESEApp(tk.Tk):
     # ==========================
 
     def activate_model(self, model_path):
+        """Makes ``model_path`` the active model and opens the Model Editor
+        on it, prompting to save any unsaved changes to a DIFFERENT model
+        first if one was already open."""
         if (
             self.editing_model_path is not None
             and self.model_changed
@@ -67,19 +75,27 @@ class DESEApp(tk.Tk):
         self.show_model_editor_page()
 
     def open_model_editor(self):
+        """Navigation-bar "Model Editor" button handler: shows the Model
+        Editor for the currently active model, if any."""
         if self.editing_model_path is None:
             return
 
         self.show_model_editor_page()
 
     def save_model(self):
+        """Delegates saving to the active Model Editor page, if one is open."""
         if hasattr(self, "model_editor_page"):
             self.model_editor_page.save_model()
 
     def select_model(self, model_path):
+        """Records which model file is currently selected on the Start page
+        (before it's actually opened)."""
         self.selected_model_path = model_path
 
     def set_model_changed(self, changed):
+        """Callback passed to ModelEditorPage: updates the unsaved-changes
+        indicator and re-evaluates whether the Simulation button should be
+        enabled, whenever the model is edited."""
         self.model_changed = changed
 
         if changed:
@@ -91,10 +107,13 @@ class DESEApp(tk.Tk):
         self.update_simulation_button_state()
 
     def update_simulation_button_state(self):
-        # The Simulation page is only reachable once the active model has
-        # zero validation issues — re-checked on every edit (via
-        # set_model_changed) so the button reflects the model's current
-        # state, not just its state as of the last explicit Validate click.
+        """Enables/disables the Simulation nav button based on whether the
+        active model currently has zero validation issues.
+
+        Re-checked on every edit (via set_model_changed) so the button
+        reflects the model's current state, not just its state as of the
+        last explicit Validate click.
+        """
         if not hasattr(self, "model_editor_page") or self.model_editor_page.model_data is None:
             self.simulation_button.config(state="disabled")
             return
@@ -119,6 +138,7 @@ class DESEApp(tk.Tk):
             widget.destroy()
 
     def show_start_page(self):
+        """Tears down the current page and shows the Start page."""
         # Window:
         self.geometry(START_WINDOW_SIZE)
         self.resizable(False, False)
@@ -137,6 +157,8 @@ class DESEApp(tk.Tk):
         self.simulation_button.config(state="disabled")
 
     def open_start_page(self):
+        """Navigation-bar "Start" button handler: prompts to save unsaved
+        changes, then shows the Start page."""
         if self.editing_model_path is not None and self.model_changed:
             result = messagebox.askyesnocancel(
                 "Unsaved changes",
@@ -152,6 +174,9 @@ class DESEApp(tk.Tk):
         self.show_start_page()
 
     def show_model_editor_page(self):
+        """Tears down the current page and shows the Model Editor for
+        ``self.editing_model_path``, falling back to the Start page if
+        loading it fails."""
         # Window:
         self.geometry(MODEL_EDITOR_WINDOW_SIZE)
         self.resizable(False, False)
@@ -177,12 +202,18 @@ class DESEApp(tk.Tk):
         self.update_simulation_button_state()
 
     def open_simulation_page(self):
+        """Navigation-bar "Simulation" button handler: shows the Simulation
+        page for the currently active model, if any."""
         if self.editing_model_path is None:
             return
 
         self.show_simulation_page()
 
     def show_simulation_page(self):
+        """Tears down the current page and rebuilds the Simulation page,
+        re-hydrating it from ``self.simulation_state``/
+        ``self.simulation_request_field_values`` so a prior run's settings
+        and results survive navigating away and back."""
         # Window:
         self.geometry(MODEL_EDITOR_WINDOW_SIZE)
         self.resizable(False, False)
@@ -205,9 +236,13 @@ class DESEApp(tk.Tk):
         self.simulation_page.grid(row=0, column=0, sticky="nsew")
 
     def set_simulation_state(self, simulation_state):
+        """Callback passed to SimulationPage: persists the last-run
+        SimulationState here so it survives the page being rebuilt on navigation."""
         self.simulation_state = simulation_state
 
     def set_simulation_request_field_value(self, field_name, value):
+        """Callback passed to SimulationPage: persists one run-parameter
+        field's value here so it survives the page being rebuilt on navigation."""
         self.simulation_request_field_values[field_name] = value
 
     def create_menu(self):

@@ -1,3 +1,9 @@
+"""Failure, planned Maintenance, and BaselineScrap: the per-cycle wear
+mechanics (`apply_wear_and_rules`, called once per completed processing
+cycle) and the shared, model-wide Maintenance Resource that unplanned
+repairs and planned maintenance jobs both compete for, dispatched by a
+user-ordered priority (`unplanned_first`/`most_worn_first`/`fifo`).
+"""
 from dese.engine.event_log import get_entity_log_fields, log_event
 from dese.engine.event_loop import EVENT_HANDLERS, schedule_event
 
@@ -12,6 +18,10 @@ DISPATCH_PRIORITY_KEY_FUNCTIONS = {
 
 
 def build_dispatch_sort_key(dispatch_priority):
+    """Builds a sort key function that ranks waiting maintenance-resource
+    requests by ``dispatch_priority`` (an ordered list of criterion names,
+    most important first -- e.g. ``["unplanned_first", "most_worn_first", "fifo"]``).
+    """
     key_functions = [
         DISPATCH_PRIORITY_KEY_FUNCTIONS[criterion] for criterion in dispatch_priority
     ]
@@ -23,10 +33,19 @@ def build_dispatch_sort_key(dispatch_priority):
 
 
 def request_maintenance_resource(state, entity_id, request_type):
-    # request_type is "unplanned" (a Failure) or "planned" (proactive
-    # Maintenance). Either way the whole Entity goes down -- one shared
-    # cycles_since_maintenance/status per Entity, not per parallel slot (a
-    # single machine, even with several parallel processing slots).
+    """Puts ``entity_id`` into failed/down and requests the shared
+    Maintenance Resource -- starts immediately if capacity allows, else
+    queues behind whatever else is waiting.
+
+    Args:
+        state: The mutable SimulationState.
+        entity_id: The Entity going down.
+        request_type: ``"unplanned"`` (a Failure) or ``"planned"``
+            (proactive Maintenance). Either way the whole Entity goes down
+            -- one shared cycles_since_maintenance/status per Entity, not
+            per parallel slot (a single machine, even with several
+            parallel processing slots).
+    """
     entity_state = state.entity_states[entity_id]
     entity_state.status = "failed" if request_type == "unplanned" else "down"
     log_event(
@@ -53,6 +72,10 @@ def request_maintenance_resource(state, entity_id, request_type):
 
 
 def start_maintenance_resource_job(state, entry):
+    """Starts a queued/just-requested maintenance-resource job: increments
+    the shared resource's busy count and schedules its completion after
+    the appropriate duration (``mean_repair_time`` for unplanned,
+    ``mean_maintenance_time`` for planned)."""
     state.maintenance_resource_state.busy_count += 1
 
     entity_id = entry["entity_id"]
@@ -67,6 +90,15 @@ def start_maintenance_resource_job(state, entry):
 
 
 def handle_maintenance_resource_job_finished(state, data):
+    """Event handler for ``"maintenance_resource_job_finished"``: resets
+    wear, frees the shared resource (starting the next queued job if any),
+    and retries whatever was stalled at ``entity_id``.
+
+    Args:
+        state: The mutable SimulationState.
+        data: The dispatch entry this job was started from (``entity_id``,
+            ``request_type``, ``cycles_since_maintenance``, ``arrival_sequence``).
+    """
     # Deferred import: breaks the mutual dependency with processing.py
     # (start_processing needs to refuse starting on a failed/down Entity,
     # and this handler needs to retry whatever was stalled once repaired).
@@ -118,11 +150,23 @@ WEAR_DEPENDENT_RULE_TYPES = ("failure", "maintenance", "baseline_scrap")
 
 
 def apply_wear_and_rules(state, entity_id, instance_id):
-    # Called once per completed cycle (see processing.handle_finish_processing).
-    # No-op for Entities with none of Failure/Maintenance/BaselineScrap
-    # configured -- an Entity can have any subset of these (independent
-    # rule_eligibility flags), so the shared wear counter increments
-    # whenever ANY of them is present, not just when Failure specifically is.
+    """Applies one completed cycle's worth of wear, Failure, Maintenance,
+    and BaselineScrap to ``entity_id``/``instance_id``.
+
+    Called once per completed cycle (see
+    ``processing.handle_finish_processing``). No-op for Entities with none
+    of Failure/Maintenance/BaselineScrap configured -- an Entity can have
+    any subset of these (independent rule_eligibility flags), so the
+    shared wear counter increments whenever ANY of them is present, not
+    just when Failure specifically is. May put the Entity into failed/down
+    (via ``request_maintenance_resource``) and/or mark ``instance_id`` as
+    scrap -- see the inline comments below for exactly when each applies.
+
+    Args:
+        state: The mutable SimulationState.
+        entity_id: The Entity that just finished a processing cycle.
+        instance_id: The Flow Object Instance that cycle was processing.
+    """
     rule_bundle = state.simulation_model.rules_by_entity_id.get(entity_id)
 
     if rule_bundle is None or not any(
@@ -171,8 +215,8 @@ def apply_wear_and_rules(state, entity_id, instance_id):
                     # BaselineScrap's own failure-independent roll below (which
                     # is skipped once this already applies). Not its own log
                     # event -- "becoming scrap" isn't a real-world event, just a
-                    # state change that the next flow_object_exited/completed/
-                    # routed row already shows (quality/cause come from
+                    # state change that the next flow_object_exited/entered/
+                    # completed row already shows (quality/cause come from
                     # get_flow_object_log_fields), same time, next sequence.
                     if instance.quality != "scrap":
                         instance.quality = "scrap"

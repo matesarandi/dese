@@ -1,3 +1,10 @@
+"""Model validation: a flat list of independent `check_*` functions
+(registered in `CHECKS`), each returning a list of `{"severity", "message"}`
+issues for one specific concern (structure, properties, routing
+completeness, process requirements, ...). `validate_model` just runs all
+of them and concatenates the results -- adding a new rule type or property
+later only means adding one more function to `CHECKS`.
+"""
 from dese.constants import NUMBER_PROPERTY_TYPE
 from dese.core.model import (
     accepts_flow_object_entry,
@@ -23,6 +30,20 @@ PRIORITY_LIST_PROPERTY_TYPE = "priority_list"
 
 
 def check_property_value(value, property_schema, location):
+    """Validates one property value against its schema definition (number
+    bounds, enum membership, or priority_list completeness).
+
+    Args:
+        value: The value to check (may be ``None``/``""`` for "unfilled").
+        property_schema: The property's schema dict (``type``, and
+            ``min``/``exclusive_min``/``max``/``values``/``default`` as applicable).
+        location: A human-readable description of where this value comes
+            from, used to prefix any issue message.
+
+    Returns:
+        list[dict]: ``{"severity": "error", "message": ...}`` issues (empty
+        if valid).
+    """
     # Generic, schema-driven checks: every current and future property gets
     # these for free from its declared "type" (and "max", where present) —
     # no per-field code needed here when a new property is added to the
@@ -105,6 +126,7 @@ def check_property_value(value, property_schema, location):
 
 
 def check_has_entities(model_data, schema):
+    """Errors if the model has no entities at all."""
     if not model_data["entities"]:
         return [{"severity": "error", "message": "The model has no entities."}]
 
@@ -112,6 +134,7 @@ def check_has_entities(model_data, schema):
 
 
 def check_has_flow_objects(model_data, schema):
+    """Errors if the model defines no Flow Object types."""
     if not model_data["flow_objects"]:
         return [{"severity": "error", "message": "The model has no Flow Objects."}]
 
@@ -119,6 +142,7 @@ def check_has_flow_objects(model_data, schema):
 
 
 def check_has_relationships(model_data, schema):
+    """Errors if there's more than one entity but no relationships connect them."""
     if len(model_data["entities"]) > 1 and not model_data["relationships"]:
         return [
             {
@@ -131,9 +155,12 @@ def check_has_relationships(model_data, schema):
 
 
 def check_dangling_relationships(model_data, schema):
-    # Also protects check_process_requirements (and any other check that
-    # looks up a relationship's endpoint entity) from crashing on a
-    # relationship left behind after its entity was deleted.
+    """Errors on any relationship whose source/target entity no longer exists.
+
+    Also protects check_process_requirements (and any other check that
+    looks up a relationship's endpoint entity) from crashing on a
+    relationship left behind after its entity was deleted.
+    """
     issues = []
     entity_ids = {entity["id"] for entity in model_data["entities"]}
 
@@ -164,6 +191,9 @@ def check_dangling_relationships(model_data, schema):
 
 
 def check_relationship_counts(model_data, schema):
+    """Errors on any entity whose input/output relationship count falls
+    outside its schema's input_min/input_max/output_min/output_max.
+    """
     # Purely schema-driven: every entity type's own input_min/input_max/
     # output_min/output_max already declares how many relationships it
     # needs — a new entity type gets this check for free.
@@ -233,6 +263,9 @@ def check_relationship_counts(model_data, schema):
 
 
 def check_has_process_boundary(model_data, schema):
+    """Errors unless exactly one entity is marked ``beginning_of_process``
+    and exactly one is marked ``end_of_process``.
+    """
     # The Model Editor UI only ever lets one entity be marked as the
     # beginning/end of the process (see update_process_boundary_state, which
     # disables the checkbutton for every other entity once one is set), but
@@ -279,6 +312,9 @@ def check_has_process_boundary(model_data, schema):
 
 
 def check_process_boundary_continuity(model_data, schema):
+    """Errors unless a path of main-entity relationships connects the
+    beginning of the process to the end of the process.
+    """
     # Mirrors find_decision_points' own traversal: walk forward from the
     # beginning entity, following only main-to-main output relationships
     # (secondary entities like Process Supply/Sink attach to a main entity
@@ -331,6 +367,7 @@ def check_process_boundary_continuity(model_data, schema):
 
 
 def check_entity_properties(model_data, schema):
+    """Runs ``check_property_value`` on every entity's own properties against its schema."""
     issues = []
 
     for entity in model_data["entities"]:
@@ -350,6 +387,8 @@ def check_entity_properties(model_data, schema):
 
 
 def check_flow_object_properties(model_data, schema):
+    """Runs ``check_property_value`` on every Flow Object type's own
+    properties against the base Flow Object schema."""
     issues = []
     flow_object_schema = schema.get_flow_object_schema()
 
@@ -365,6 +404,19 @@ def check_flow_object_properties(model_data, schema):
 
 
 def check_rule_properties(model_data, schema, rule_type, eligible_entity_ids, get_parameter):
+    """Runs ``check_property_value`` on every eligible entity's fields for
+    one rule type -- the shared implementation behind
+    ``check_failure_properties``/``check_maintenance_properties``/
+    ``check_baseline_scrap_properties``.
+
+    Args:
+        model_data: The full model dict.
+        schema: The loaded SchemaLoader.
+        rule_type: The rule's schema name, e.g. ``"Failure"``.
+        eligible_entity_ids: Ids of entities that should have this rule filled in.
+        get_parameter: The rule-specific getter (e.g. ``get_failure_parameter``)
+            used to read each field's current value.
+    """
     issues = []
     rule_schema = schema.get_rule_schema(model_data["domain"], rule_type)
     # A domain that doesn't declare this rule_type at all (see
@@ -385,6 +437,7 @@ def check_rule_properties(model_data, schema, rule_type, eligible_entity_ids, ge
 
 
 def check_failure_properties(model_data, schema):
+    """Validates every Failure-eligible entity's Failure rule fields."""
     return check_rule_properties(
         model_data,
         schema,
@@ -395,8 +448,11 @@ def check_failure_properties(model_data, schema):
 
 
 def check_maintenance_properties(model_data, schema):
-    # Maintenance shares the same eligibility as Failure (both apply to any
-    # entity whose schema declares supports_failure).
+    """Validates every Maintenance-eligible entity's Maintenance rule fields.
+
+    Maintenance shares the same eligibility as Failure (both apply to any
+    entity whose schema declares supports_failure).
+    """
     return check_rule_properties(
         model_data,
         schema,
@@ -407,6 +463,7 @@ def check_maintenance_properties(model_data, schema):
 
 
 def check_baseline_scrap_properties(model_data, schema):
+    """Validates every BaselineScrap-eligible entity's BaselineScrap rule fields."""
     return check_rule_properties(
         model_data,
         schema,
@@ -417,6 +474,9 @@ def check_baseline_scrap_properties(model_data, schema):
 
 
 def check_maintenance_resource_properties(model_data, schema):
+    """Validates the model-wide MaintenanceResource fields (capacity,
+    dispatch_priority) -- only if at least one entity is Failure-eligible
+    (otherwise there's nothing that would ever use it)."""
     if not get_failure_eligible_entity_ids(model_data, schema):
         return []
 
@@ -433,6 +493,9 @@ def check_maintenance_resource_properties(model_data, schema):
 
 
 def check_routing_completeness(model_data, schema):
+    """Errors on any decision point (>1 possible Routing target) whose LAST
+    candidate scope doesn't cover every one of its values with an assigned output.
+    """
     # evaluate_routing checks scope candidates in get_routing_scope_candidates'
     # own order (entity states first, then any flow_object states the
     # Entity type can read) and returns the FIRST scope that has a
@@ -487,6 +550,11 @@ def check_routing_completeness(model_data, schema):
 
 
 def check_process_requirements(model_data, schema):
+    """Errors on any (Flow Object type, Processing entity, Process Supply)
+    combination whose required quantity is missing or not greater than
+    zero -- every Flow Object type must declare a requirement from EVERY
+    Process Supply feeding an entity it can enter, even ones it barely uses.
+    """
     issues = []
     entities_by_id = {entity["id"]: entity for entity in model_data["entities"]}
     processing_entities = [
@@ -556,6 +624,17 @@ CHECKS = [
 
 
 def validate_model(model_data, schema):
+    """Runs every check in ``CHECKS`` against ``model_data`` and returns the
+    combined issue list (empty means the model is valid/simulation-ready).
+
+    Args:
+        model_data: The full model dict to validate.
+        schema: The loaded SchemaLoader.
+
+    Returns:
+        list[dict]: ``{"severity": "error", "message": ...}`` issues from
+        every check, concatenated.
+    """
     # Each check is self-contained and independently registered above, so
     # adding a new rule type or property later only means adding one more
     # function to CHECKS — nothing else here needs to change, which avoids

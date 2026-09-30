@@ -1,3 +1,8 @@
+"""Flow Object generation: each Flow Object type's own independent,
+recurring batch-generation schedule, feeding newly-created instances into
+`order_storage` and immediately trying to admit them into the
+beginning-of-process Entity.
+"""
 from dese.engine.event_log import get_flow_object_log_fields, log_event
 from dese.engine.event_loop import EVENT_HANDLERS, schedule_event
 from dese.engine.movement import admit_from_order_storage
@@ -6,9 +11,13 @@ from dese.engine.simulation_state import FlowObjectInstance
 
 
 def schedule_flow_object_generation(state):
-    # Called once, before the run starts, to kick off each Flow Object
-    # type's own independent, recurring generation schedule -- the first
-    # batch of each type generates immediately, at the current clock.
+    """Schedules each Flow Object type's first generation event, at the
+    current clock (so the first batch of every type generates immediately
+    when the run starts).
+
+    Called once, before the run starts, to kick off each Flow Object
+    type's own independent, recurring generation schedule.
+    """
     for flow_object_type in state.simulation_model.flow_object_types:
         schedule_event(
             state,
@@ -19,6 +28,15 @@ def schedule_flow_object_generation(state):
 
 
 def handle_generate_flow_objects(state, data):
+    """Event handler for ``"generate_flow_objects"``: creates one batch of
+    a Flow Object type, tries to admit them into the beginning Entity, and
+    reschedules this same type's next batch.
+
+    Args:
+        state: The mutable SimulationState.
+        data: ``{"flow_object_type": <name>}`` identifying which type's
+            batch to generate.
+    """
     flow_object_type_name = data["flow_object_type"]
     flow_object_type = next(
         flow_object_type

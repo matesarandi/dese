@@ -1,3 +1,9 @@
+"""The Model Editor page: owns the in-memory model_data for a single model
+file and every editor built on top of it -- entity table, property panel,
+relationship comboboxes, process-boundary flags, Save/Validate, and the
+Structure/Visualization/Rules tab notebook (the Structure and Rules tabs'
+own rendering is supplied by StructureTabMixin/RulesTabMixin).
+"""
 import copy
 import json
 import tkinter as tk
@@ -57,9 +63,13 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
     # ==========================
 
     def get_domain(self):
+        """Returns the active model's domain name (e.g. ``"Production"``)."""
         return self.model_data["domain"]
 
     def move_entity_up(self):
+        """"Move Up" button handler: swaps the selected entity with the one
+        above it in the entity table's order (purely cosmetic/organizational,
+        doesn't affect simulation behavior)."""
         selected_item = self.entity_table.selection()
 
         if not selected_item:
@@ -82,6 +92,8 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         self.update_model_changed_state()
 
     def move_entity_down(self):
+        """"Move Down" button handler: swaps the selected entity with the
+        one below it in the entity table's order."""
         selected_item = self.entity_table.selection()
 
         if not selected_item:
@@ -105,8 +117,11 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         self.update_model_changed_state()
 
     def update_editor_state(self):
-        # Every model now has a domain from creation onward (no domain
-        # selector to wait for), so the editor controls are always enabled.
+        """Enables every editor control.
+
+        Every model now has a domain from creation onward (no domain
+        selector to wait for), so the editor controls are always enabled.
+        """
         self.add_entity_button.config(state="normal")
         self.delete_entity_button.config(state="normal")
         self.move_entity_up_button.config(state="normal")
@@ -121,12 +136,18 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         self.flow_objects_button.config(state="normal")
 
     def update_model_changed_state(self):
-        # Comparing full snapshots (instead of an explicit dirty flag) avoids
-        # missing a `set_model_changed(True)` call after any of the many places
-        # that mutate model_data in place.
+        """Recomputes and reports (via ``model_changed_callback``) whether
+        ``model_data`` currently differs from what's on disk.
+
+        Comparing full snapshots (instead of an explicit dirty flag) avoids
+        missing a `set_model_changed(True)` call after any of the many places
+        that mutate model_data in place.
+        """
         self.model_changed_callback(self.model_data != self.saved_model_data)
 
     def open_flow_object_editor(self):
+        """"Flow Objects" button handler: opens (or refocuses) the
+        FlowObjectEditor window for the active model."""
         if (
             self.flow_object_editor is not None
             and self.flow_object_editor.window.winfo_exists()
@@ -144,17 +165,21 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         )
 
     def generate_entity_id(self):
+        """Returns the next free ``E###``-style id for a new entity."""
         existing_ids = [entity["id"] for entity in self.model_data["entities"]]
 
         return generate_id(existing_ids, "E")
 
     def is_entity_name_unique(self, entity, name):
+        """True if no OTHER entity already uses ``name`` (``entity`` itself
+        is excluded, so renaming to its own current name is always fine)."""
         return all(
             other_entity is entity or other_entity["name"] != name
             for other_entity in self.model_data["entities"]
         )
 
     def generate_relationship_id(self):
+        """Returns the next free ``R###``-style id for a new relationship."""
         existing_ids = [
             relationship["id"] for relationship in self.model_data["relationships"]
         ]
@@ -162,6 +187,9 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         return generate_id(existing_ids, "R")
 
     def update_process_boundary_state(self):
+        """Refreshes the beginning/end-of-process checkbuttons' enabled
+        state and label text based on which entity (if any) currently
+        holds each flag, and whether the selected entity is eligible."""
         beginning_entity = next(
             (
                 entity
@@ -233,6 +261,7 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
     # ==========================
 
     def add_entity(self):
+        """"Add Entity" button handler: opens (or refocuses) the Add Entity dialog."""
         if self.add_entity_window is not None and self.add_entity_window.winfo_exists():
             self.add_entity_window.lift()
             self.add_entity_window.focus_set()
@@ -277,6 +306,10 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         self.add_entity_confirm_button.grid(row=2, column=0, sticky="e")
 
     def confirm_add_entity(self):
+        """Add Entity dialog's "Add" button handler: validates the entered
+        name/type and appends a new entity (with every schema property
+        initialized to ``None``) to the model.
+        """
         # Get input:
         name = self.add_entity_name_entry.get()
         entity_type = self.add_entity_type_combobox.get()
@@ -326,6 +359,9 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         self.update_model_changed_state()
 
     def clear_entity_editor(self):
+        """Resets the entity editor panel (name/type/properties/relationships)
+        to empty, e.g. after the selected entity was deleted.
+        """
         # Clear basic fields:
         self.name_entry.delete(0, "end")
         self.type_combobox.set("")
@@ -341,6 +377,9 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
             widget.destroy()
 
     def delete_entity(self):
+        """"Delete" button handler: removes the selected entity along with
+        every relationship and rule bundle referencing it.
+        """
         # Get selection:
         selected_item = self.entity_table.selection()
 
@@ -387,11 +426,14 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         self.update_model_changed_state()
 
     def update_type_selector(self):
+        """Refreshes the entity-type Combobox's choices from the schema."""
         self.type_combobox["values"] = self.schema.get_entity_types(
             self.model_data["domain"]
         )
 
     def update_entity_editor(self):
+        """Repopulates the whole entity editor panel (name, type,
+        boundary flags, properties, relationships) from ``selected_entity``."""
         if self.selected_entity is None:
             return
 
@@ -410,6 +452,9 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         self.update_relationship_editor()
 
     def load_model(self):
+        """Loads ``self.model_path`` into ``model_data`` (and a deep-copied
+        ``saved_model_data`` snapshot for change detection), showing an
+        error dialog and leaving ``model_data`` as ``None`` on failure."""
         try:
             self.model_data = load_model_data(self.model_path, self.schema)
             self.saved_model_data = copy.deepcopy(self.model_data)
@@ -421,6 +466,8 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
             self.model_data = None
 
     def save_model(self):
+        """"Save" button handler: writes ``model_data`` to ``self.model_path``
+        and refreshes the unsaved-changes state."""
         with open(self.model_path, "w") as file:
             json.dump(self.model_data, file, indent=4)
 
@@ -428,6 +475,8 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         self.update_model_changed_state()
 
     def show_issues(self):
+        """"Show Issues" button handler: validates the model and displays
+        the issues (or a "no issues" confirmation) in a results window."""
         try:
             issues = validate_model_data(self.model_data, self.schema)
         except Exception as error:
@@ -478,6 +527,7 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         self.validation_results_scrollbar.grid(row=1, column=1, sticky="ns")
 
     def render_validation_issues(self, issues):
+        """Fills the validation-results window's text area with ``issues``, one bullet each."""
         self.validation_results_summary_label.config(
             text=f"{len(issues)} issue{'s' if len(issues) != 1 else ''} found:"
         )
@@ -502,6 +552,28 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         relationship_entity_field,
         connection_description,
     ):
+        """Applies (or refuses) one beginning/end-of-process checkbutton
+        change on the selected entity -- shared implementation behind
+        ``update_process_boundary``'s two calls (one per direction).
+
+        Refuses (resets the checkbutton and shows a warning) if the entity
+        already has a conflicting main-entity relationship in that
+        direction, since a beginning/end-of-process entity must be the
+        process's sole entry/exit point.
+
+        Args:
+            direction: ``"beginning"`` or ``"end"``.
+            is_marked: The checkbutton's new (attempted) value.
+            variable: The checkbutton's Tkinter BooleanVar (reset to False on refusal).
+            get_conflicting_relationships: Callable returning any main-entity
+                relationships that would conflict with marking this flag.
+            relationship_entity_field: Which endpoint field (``"source"``/``"target"``)
+                identifies the OTHER entity in a conflicting relationship.
+            connection_description: Human-readable phrase for the warning message.
+
+        Returns:
+            bool: True if the flag was applied (or cleared), False if refused.
+        """
         boundary_key = f"{direction}_of_process"
 
         if not is_marked:
@@ -533,9 +605,13 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         return True
 
     def update_process_boundary(self):
-        # The process can only have one entry and one exit point among its
-        # "main" entities, so an entity can't be marked beginning/end of
-        # process while it already has a main-entity input/output relationship.
+        """Beginning/end-of-process checkbutton handler: applies both
+        flags via ``apply_process_boundary_flag`` and refreshes dependent UI.
+
+        The process can only have one entry and one exit point among its
+        "main" entities, so an entity can't be marked beginning/end of
+        process while it already has a main-entity input/output relationship.
+        """
         if self.selected_entity is None:
             return
 
@@ -569,6 +645,8 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         self.update_model_changed_state()
 
     def entity_selected(self, event):
+        """Entity-table row-click handler: sets ``selected_entity`` and
+        refreshes the entity editor panel for it."""
         selected_item = self.entity_table.selection()
 
         if selected_item:
@@ -585,6 +663,7 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
                     break
 
     def get_entity_name(self, entity_id):
+        """Returns ``entity_id``'s current name, or ``""`` if unknown."""
         for entity in self.model_data["entities"]:
             if entity["id"] == entity_id:
                 return entity["name"]
@@ -592,6 +671,8 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         return ""
 
     def get_entity_id(self, entity_name):
+        """Returns the entity currently named ``entity_name``'s id, or
+        ``None`` if no entity has that name."""
         for entity in self.model_data["entities"]:
             if entity["name"] == entity_name:
                 return entity["id"]
@@ -599,18 +680,22 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         return None
 
     def get_input_relationships(self):
+        """Returns the selected entity's input relationships (``[]`` if none selected)."""
         if self.selected_entity is None:
             return []
 
         return get_input_relationships(self.selected_entity["id"], self.model_data)
 
     def get_output_relationships(self):
+        """Returns the selected entity's output relationships (``[]`` if none selected)."""
         if self.selected_entity is None:
             return []
 
         return get_output_relationships(self.selected_entity["id"], self.model_data)
 
     def update_entity_name(self, event=None):
+        """Name Entry commit handler: renames the selected entity, after
+        checking uniqueness (reverts the field on a duplicate)."""
         if self.selected_entity is None:
             return
 
@@ -635,6 +720,8 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         self.update_model_changed_state()
 
     def update_entity_type(self, event=None):
+        """Type Combobox commit handler: changes the selected entity's
+        type and rebuilds its property/relationship editors for the new type."""
         if self.selected_entity is None:
             return
 
@@ -655,12 +742,17 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         self.update_model_changed_state()
 
     def commit_entity_property(self, property_name, entry):
+        """Property Entry commit handler: applies the entered value, then
+        re-renders the Entry from the stored (type-converted) value, so an
+        invalid/partial entry snaps back to whatever actually got saved."""
         self.update_entity_property(property_name)
 
         entry.delete(0, "end")
         entry.insert(0, str(self.selected_entity["properties"].get(property_name, "")))
 
     def update_entity_property(self, property_name, event=None):
+        """Converts and stores one property's entered value on the
+        selected entity, per its schema type."""
         if self.selected_entity is None:
             return
 
@@ -679,6 +771,22 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
         self.update_model_changed_state()
 
     def relationship_selected(self, event):
+        """Input/output relationship Combobox change handler: creates,
+        retargets, or removes a relationship based on the selected
+        Combobox's new value.
+
+        Clearing a combobox removes its relationship entirely; picking a
+        new entity either creates a fresh relationship (if the combobox
+        was previously empty) or retargets the existing one (updating its
+        ``source``/``target``) -- in the retarget case, if the old
+        endpoint no longer connects to this entity at all, any Routing
+        conditions configured for that connection are moved onto the new
+        one via ``move_routing_rule_output``, rather than left stranded.
+
+        Args:
+            event: The Tkinter ``<<ComboboxSelected>>``/virtual event; only
+                ``event.widget`` is used, to identify which combobox changed.
+        """
         entity_name = event.widget.get()
 
         if self.selected_entity is None:
@@ -872,10 +980,14 @@ class ModelEditorPage(ttk.Frame, StructureTabMixin, RulesTabMixin):
     # ==========================
 
     def on_tab_changed(self, event=None):
-        # The Rules tab's sections can go stale if entities/relationships
-        # change on the Structure tab — refresh them whenever the user
-        # actually switches to the Rules tab, rather than hooking every
-        # entity/relationship mutation site.
+        """Notebook tab-change handler: refreshes the Rules tab whenever
+        the user switches to it.
+
+        The Rules tab's sections can go stale if entities/relationships
+        change on the Structure tab — refresh them whenever the user
+        actually switches to the Rules tab, rather than hooking every
+        entity/relationship mutation site.
+        """
         if self.notebook.select() == str(self.rules_tab):
             self.refresh_rules_tab()
 

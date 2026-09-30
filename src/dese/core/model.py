@@ -1,3 +1,11 @@
+"""Schema-driven helpers over a model_data dict: loading/validating model
+files, reading an entity's simulation role and rule eligibility from the
+schema (never from hardcoded type names), relationship/routing-graph
+queries, and the get/set accessors for every rule type's parameters. This
+is the one place both the Model Editor UI and the Simulation Engine go
+through to interpret model_data -- neither reads schema.json or
+model_data's raw shape directly.
+"""
 import json
 
 from dese.constants import (
@@ -21,9 +29,24 @@ REQUIRED_MODEL_DATA_KEYS = {
 
 
 def load_model_data(model_path, schema):
-    # Headless (Tkinter-independent) so a future Simulation Engine can load
-    # and validate a model file the same way the editor does, without
-    # needing to duplicate this logic or start a UI.
+    """Loads and sanity-checks a model file from disk.
+
+    Headless (Tkinter-independent) so a future Simulation Engine can load
+    and validate a model file the same way the editor does, without
+    needing to duplicate this logic or start a UI.
+
+    Args:
+        model_path: Path to the model JSON file.
+        schema: The loaded SchemaLoader (used for the domain fallback below).
+
+    Returns:
+        dict: the parsed model_data.
+
+    Raises:
+        ValueError: if the file isn't a dict, has an incompatible
+            ``schema_version``, or is missing/misshaped one of
+            ``REQUIRED_MODEL_DATA_KEYS``.
+    """
     with open(model_path, "r") as file:
         model_data = json.load(file)
 
@@ -52,6 +75,8 @@ def load_model_data(model_path, schema):
 
 
 def is_main_entity(entity, model_data, schema):
+    """True if ``entity``'s schema marks it with the "main" hierarchy role
+    (as opposed to a secondary entity like Process Supply/Sink)."""
     entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
 
     if entity_schema is None:
@@ -61,6 +86,8 @@ def is_main_entity(entity, model_data, schema):
 
 
 def accepts_flow_object_entry(entity, model_data, schema):
+    """True if ``entity``'s schema declares it as a Flow-Object-processing
+    entity (Processing/Inspection), per ``simulation_role.accepts_flow_object_entry``."""
     entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
 
     if entity_schema is None:
@@ -72,6 +99,8 @@ def accepts_flow_object_entry(entity, model_data, schema):
 
 
 def is_supply_source(entity, model_data, schema):
+    """True if ``entity``'s schema declares it as a material source (Process
+    Supply), per ``simulation_role.is_supply_source``."""
     entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
 
     if entity_schema is None:
@@ -81,6 +110,8 @@ def is_supply_source(entity, model_data, schema):
 
 
 def holds_flow_object_queue(entity, model_data, schema):
+    """True if ``entity``'s schema declares it as queue-holding (Storage),
+    per ``simulation_role.holds_flow_object_queue``."""
     entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
 
     if entity_schema is None:
@@ -92,6 +123,8 @@ def holds_flow_object_queue(entity, model_data, schema):
 
 
 def absorbs_flow_objects(entity, model_data, schema):
+    """True if ``entity``'s schema declares it as an absorbing terminus
+    (Process Sink), per ``simulation_role.absorbs_flow_objects``."""
     entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
 
     if entity_schema is None:
@@ -101,6 +134,9 @@ def absorbs_flow_objects(entity, model_data, schema):
 
 
 def reads_flow_object_states(entity, model_data, schema):
+    """True if ``entity``'s schema declares it able to read ANY Flow Object
+    state (e.g. Inspection reading ``quality``), per
+    ``rule_eligibility.reads_flow_object_states``."""
     entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
 
     if entity_schema is None:
@@ -110,19 +146,23 @@ def reads_flow_object_states(entity, model_data, schema):
 
 
 def has_quality_reading_entity(model_data, schema):
-    # Not hardcoded to "Inspection" by name -- any entity type the schema
-    # declares as able to read Flow Object state (reads_flow_object_states)
-    # counts, so this stays correct if that capability is ever granted to
-    # another entity type.
+    """True if the model has at least one entity able to read Flow Object state.
+
+    Not hardcoded to "Inspection" by name -- any entity type the schema
+    declares as able to read Flow Object state (reads_flow_object_states)
+    counts, so this stays correct if that capability is ever granted to
+    another entity type.
+    """
     return any(
         reads_flow_object_states(entity, model_data, schema) for entity in model_data["entities"]
     )
 
 
 def get_processing_duration_property(entity, model_data, schema):
-    # The property name (e.g. "processing_time") holding how long this
-    # Entity takes per Flow Object -- None for Entities that don't do timed,
-    # capacity-limited processing at all (Storage, Process Supply/Sink).
+    """Returns the property name (e.g. ``"processing_time"``) holding how
+    long ``entity`` takes per Flow Object, or ``None`` for Entities that
+    don't do timed, capacity-limited processing at all (Storage, Process
+    Supply/Sink)."""
     entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
 
     if entity_schema is None:
@@ -132,6 +172,7 @@ def get_processing_duration_property(entity, model_data, schema):
 
 
 def get_output_relationships(entity_id, model_data):
+    """Returns every relationship whose source is ``entity_id``."""
     return [
         relationship
         for relationship in model_data["relationships"]
@@ -140,6 +181,7 @@ def get_output_relationships(entity_id, model_data):
 
 
 def get_input_relationships(entity_id, model_data):
+    """Returns every relationship whose target is ``entity_id``."""
     return [
         relationship
         for relationship in model_data["relationships"]
@@ -148,6 +190,9 @@ def get_input_relationships(entity_id, model_data):
 
 
 def get_main_entity_input_relationships(entity_id, model_data, schema):
+    """Returns ``entity_id``'s input relationships whose SOURCE is a main
+    entity (excludes Process Supply feeds) -- what ``processing.retry_upstream``
+    uses to find real upstream Flow-Object sources."""
     entities_by_id = {entity["id"]: entity for entity in model_data["entities"]}
 
     return [
@@ -158,6 +203,7 @@ def get_main_entity_input_relationships(entity_id, model_data, schema):
 
 
 def get_main_entity_output_relationships(entity_id, model_data, schema):
+    """Returns ``entity_id``'s output relationships whose TARGET is a main entity."""
     entities_by_id = {entity["id"]: entity for entity in model_data["entities"]}
 
     return [
@@ -170,6 +216,19 @@ def get_main_entity_output_relationships(entity_id, model_data, schema):
 def has_available_relationship_slot(
     entity_id, model_data, schema, direction, relationship_id=None
 ):
+    """True if ``entity_id`` has room for one more relationship in
+    ``direction`` (``"input"``/``"output"``), per its schema's
+    input_max/output_max.
+
+    Args:
+        entity_id: The entity to check.
+        model_data: The full model dict.
+        schema: The loaded SchemaLoader.
+        direction: ``"input"`` or ``"output"``.
+        relationship_id: If checking in the context of editing an existing
+            relationship, its id -- excluded from the count so editing it
+            doesn't count against itself.
+    """
     entity = next(
         entity for entity in model_data["entities"] if entity["id"] == entity_id
     )
@@ -193,10 +252,29 @@ def has_available_relationship_slot(
 def get_allowed_entities(
     selected_entity, model_data, schema, direction, relationship_id=None
 ):
-    # A beginning-of-process entity marks the single entry point of the main
-    # process chain, so it may not receive an input from another main entity;
-    # symmetrically, an end-of-process entity may not feed a main entity as
-    # output. This keeps exactly one entry/exit point per process.
+    """Returns every entity ``selected_entity`` could validly connect a new
+    (or retargeted) relationship to, in ``direction`` -- used by the Model
+    Editor's relationship comboboxes.
+
+    Filters by relationship_allowances (source/target type compatibility),
+    process-boundary rules (a beginning-of-process entity marks the single
+    entry point of the main process chain, so it may not receive an input
+    from another main entity; symmetrically, an end-of-process entity may
+    not feed a main entity as output -- this keeps exactly one entry/exit
+    point per process), no duplicate relationships between the same pair,
+    and the candidate's own remaining relationship-slot capacity.
+
+    Args:
+        selected_entity: The entity the new/edited relationship attaches to.
+        model_data: The full model dict.
+        schema: The loaded SchemaLoader.
+        direction: ``"input"`` or ``"output"``, from ``selected_entity``'s perspective.
+        relationship_id: If editing an existing relationship, its id (excluded
+            from the duplicate/capacity checks).
+
+    Returns:
+        list[dict]: the valid candidate entities.
+    """
     selected_type = selected_entity["type"]
     selected_entity_id = selected_entity["id"]
 
@@ -254,10 +332,12 @@ def get_allowed_entities(
 
 
 def get_routing_target_ids(entity, model_data):
-    # The set of possible Routing destinations for this Entity: every real
-    # output relationship, plus the virtual END_OF_PROCESS_ROUTING_TARGET
-    # destination if the Entity is marked end_of_process — it doesn't lead
-    # to a real downstream Entity, just a completed Flow Object.
+    """Returns every possible Routing destination for ``entity``: its real
+    output relationships' targets, plus the virtual
+    ``END_OF_PROCESS_ROUTING_TARGET`` if it's marked ``end_of_process``
+    (that one doesn't lead to a real downstream Entity, just a completed
+    Flow Object).
+    """
     target_ids = [
         relationship["target"]
         for relationship in get_output_relationships(entity["id"], model_data)
@@ -270,16 +350,16 @@ def get_routing_target_ids(entity, model_data):
 
 
 def find_decision_points(model_data, schema):
-    # A decision point is a main entity with more than one possible
-    # Routing destination — real output relationships, plus the virtual
-    # "End of Process" destination end_of_process adds (see
-    # get_routing_target_ids) — the model structure alone tells the
-    # Simulation Engine where a Routing Rule is required, no extra user
-    # input needed. Only main-to-main edges are followed onward for
-    # traversal (Process Supply/Sink attach to a main entity but are not
-    # part of the main process chain); the model is assumed to be a DAG
-    # (no rework loops) — see project_product_vision memory for that
-    # decision.
+    """Returns the ids of every main entity that's a decision point (>1
+    possible Routing destination), by traversing forward from the
+    beginning-of-process entity.
+
+    The model structure alone tells the Simulation Engine where a Routing
+    Rule is required, no extra user input needed. Only main-to-main edges
+    are followed onward for traversal (Process Supply/Sink attach to a
+    main entity but are not part of the main process chain); the model is
+    assumed to be a DAG (no rework loops).
+    """
     entities_by_id = {entity["id"]: entity for entity in model_data["entities"]}
 
     beginning_entity = next(
@@ -325,8 +405,9 @@ def find_decision_points(model_data, schema):
 
 
 def find_entity_rules(model_data, entity_id):
-    # The single bundle holding everything Routing/Failure/Maintenance-
-    # related for one Entity — at most one per Entity, keyed by "at".
+    """Returns the single rule bundle (Routing/Failure/Maintenance/
+    BaselineScrap, whichever are set) for ``entity_id``, or ``None`` if it
+    has none -- at most one bundle per Entity, keyed by ``"at"``."""
     return next(
         (rule for rule in model_data["rules"] if rule.get("at") == entity_id),
         None,
@@ -334,6 +415,8 @@ def find_entity_rules(model_data, entity_id):
 
 
 def get_or_create_entity_rules(model_data, entity_id):
+    """Returns ``entity_id``'s rule bundle, creating (and appending to
+    ``model_data["rules"]``) an empty one first if it doesn't exist yet."""
     bundle = find_entity_rules(model_data, entity_id)
 
     if bundle is None:
@@ -344,18 +427,24 @@ def get_or_create_entity_rules(model_data, entity_id):
 
 
 def is_entity_rules_bundle_empty(bundle):
-    # "at" is the only key every bundle always has — routing/failure/
-    # maintenance/baseline_scrap (and any future rule) are only ever set
-    # with actual data in them (see get_or_create_entity_rules and the
-    # rule-specific setters), never left behind as an empty dict. So no
-    # keys beyond "at" means there's genuinely nothing left in it —
-    # checked structurally, not by listing each rule key by name, so a
-    # future rule type can't be forgotten here the way baseline_scrap
-    # was.
+    """True if ``bundle`` has nothing left in it but its ``"at"`` key.
+
+    "at" is the only key every bundle always has — routing/failure/
+    maintenance/baseline_scrap (and any future rule) are only ever set
+    with actual data in them (see get_or_create_entity_rules and the
+    rule-specific setters), never left behind as an empty dict. So no
+    keys beyond "at" means there's genuinely nothing left in it —
+    checked structurally, not by listing each rule key by name, so a
+    future rule type can't be forgotten here the way baseline_scrap
+    was.
+    """
     return set(bundle.keys()) <= {"at"}
 
 
 def get_rule_parameter(model_data, entity_id, rule_key, field_name):
+    """Returns ``entity_id``'s current value for one rule field (e.g.
+    ``rule_key="failure"``, ``field_name="mean_repair_time"``), or ``None``
+    if unset."""
     bundle = find_entity_rules(model_data, entity_id)
 
     if bundle is None:
@@ -365,11 +454,16 @@ def get_rule_parameter(model_data, entity_id, rule_key, field_name):
 
 
 def set_rule_parameter(model_data, entity_id, rule_key, field_name, value):
+    """Sets ``entity_id``'s value for one rule field, creating its bundle/
+    sub-dict as needed."""
     bundle = get_or_create_entity_rules(model_data, entity_id)
     bundle.setdefault(rule_key, {})[field_name] = value
 
 
 def add_routing_condition(model_data, entity_id, target_id, scope, variable, equals):
+    """Adds a ``(scope, variable, equals)`` Routing condition to
+    ``target_id``'s output at decision point ``entity_id`` (creating the
+    output entry if it doesn't exist yet)."""
     bundle = get_or_create_entity_rules(model_data, entity_id)
     outputs = bundle.setdefault("routing", {}).setdefault("outputs", [])
 
@@ -383,8 +477,9 @@ def add_routing_condition(model_data, entity_id, target_id, scope, variable, equ
 
 
 def get_routing_condition_owner(model_data, entity_id, scope, variable, equals):
-    # Which output target currently claims this (scope, variable, equals)
-    # condition at this decision point, or None if nothing does.
+    """Returns which output target currently claims this
+    ``(scope, variable, equals)`` condition at decision point
+    ``entity_id``, or ``None`` if nothing does."""
     bundle = find_entity_rules(model_data, entity_id)
 
     if bundle is None:
@@ -403,9 +498,14 @@ def get_routing_condition_owner(model_data, entity_id, scope, variable, equals):
 
 
 def set_routing_condition_owner(model_data, entity_id, scope, variable, equals, target_id):
-    # Assigns this (scope, variable, equals) condition to target_id's
-    # output, removing it from wherever it was before. target_id=None just
-    # unassigns it. A no-op if it's already exactly where it should be.
+    """Assigns a ``(scope, variable, equals)`` Routing condition to
+    ``target_id``'s output at decision point ``entity_id``, removing it
+    from wherever it was before.
+
+    ``target_id=None`` just unassigns it. A no-op if it's already exactly
+    where it should be -- the Model Editor's checkbox-matrix Routing UI
+    calls this directly on every click.
+    """
     current_owner = get_routing_condition_owner(model_data, entity_id, scope, variable, equals)
 
     if current_owner == target_id:
@@ -436,12 +536,14 @@ def set_routing_condition_owner(model_data, entity_id, scope, variable, equals, 
 
 
 def move_routing_rule_output(model_data, old_entity_id, old_target_id, new_entity_id, new_target_id):
-    # Retargeting a relationship (either end) must not strand the Routing
-    # conditions configured for it — move the output (and its conditions)
-    # from (old_entity_id -> old_target_id) to (new_entity_id ->
-    # new_target_id) instead. A no-op if there's nothing configured there,
-    # or if the destination already has its own output (never clobber
-    # existing configuration).
+    """Moves a Routing output (and its conditions) from
+    ``(old_entity_id -> old_target_id)`` to ``(new_entity_id -> new_target_id)``.
+
+    Called when a relationship is retargeted (either end), so it doesn't
+    strand the Routing conditions configured for it. A no-op if there's
+    nothing configured there, or if the destination already has its own
+    output (never clobbers existing configuration).
+    """
     old_bundle = find_entity_rules(model_data, old_entity_id)
 
     if old_bundle is None:
@@ -486,11 +588,16 @@ def move_routing_rule_output(model_data, old_entity_id, old_target_id, new_entit
 
 
 def remove_entity_from_rules(model_data, entity_id):
-    # Deleting an Entity shouldn't leave Rule data referencing an ID that no
-    # longer exists — an orphaned Routing output could otherwise resurface
-    # later (e.g. if a decision point regains a second output) with
-    # conditions the user never meant to keep. MaintenanceResource (it has
-    # no "at") is never touched here — it isn't tied to any single Entity.
+    """Strips every reference to ``entity_id`` out of ``model_data["rules"]``
+    when it's deleted -- both its own bundle (as ``"at"``) and any other
+    entity's Routing output that targeted it.
+
+    Deleting an Entity shouldn't leave Rule data referencing an ID that no
+    longer exists — an orphaned Routing output could otherwise resurface
+    later (e.g. if a decision point regains a second output) with
+    conditions the user never meant to keep. MaintenanceResource (it has
+    no "at") is never touched here — it isn't tied to any single Entity.
+    """
     remaining_rules = []
 
     for rule_entry in model_data["rules"]:
@@ -517,14 +624,22 @@ def remove_entity_from_rules(model_data, entity_id):
 
 
 def get_routing_scope_candidates(entity, model_data, schema):
-    # An Entity's own state is always a candidate — every Entity can
-    # observe itself, no matter its type; a new state added to
-    # base_entity_schema (now or in the future) becomes selectable
-    # automatically, with no code change here. A Flow Object's state is
-    # only a candidate where the Entity type actually has a way to read
-    # it (declared via rule_eligibility.reads_flow_object_states) — e.g.
-    # only Inspection can see Flow Object Quality, since that's the one
-    # that actually inspects it.
+    """Returns ``entity``'s candidate routing scopes, in evaluation-priority order.
+
+    An Entity's own state is always a candidate — every Entity can
+    observe itself, no matter its type; a new state added to
+    base_entity_schema (now or in the future) becomes selectable
+    automatically, with no code change here. A Flow Object's state is
+    only a candidate where the Entity type actually has a way to read
+    it (declared via rule_eligibility.reads_flow_object_states) — e.g.
+    only Inspection can see Flow Object Quality, since that's the one
+    that actually inspects it.
+
+    Returns:
+        list[tuple[str, str]]: ``(scope, variable)`` pairs, ``"entity"``
+        scopes first, then any eligible ``"flow_object"`` scopes --
+        ``engine.routing.evaluate_routing`` checks them in this exact order.
+    """
     candidates = [
         ("entity", variable) for variable in schema.get_base_entity_schema()["states"]
     ]
@@ -544,12 +659,17 @@ def get_routing_scope_candidates(entity, model_data, schema):
 
 
 def get_routing_scope_label(scope, variable):
+    """Returns the human-readable label for a routing scope/variable (e.g.
+    ``("entity", "status")`` -> ``"Entity Status"``), auto-generated from
+    the variable name so it never drifts from a hand-written string."""
     prefix = "Entity" if scope == "entity" else "Flow Object"
 
     return f"{prefix} {variable.replace('_', ' ').title()}"
 
 
 def get_routing_scope_values(scope, variable, schema):
+    """Returns every possible value ``(scope, variable)`` can take (e.g.
+    ``status``'s ``["idle", "busy", "blocked", "failed", "down"]``)."""
     if scope == "entity":
         return schema.get_base_entity_schema()["states"][variable]["values"]
 
@@ -557,6 +677,8 @@ def get_routing_scope_values(scope, variable, schema):
 
 
 def supports_failure(entity, model_data, schema):
+    """True if ``entity``'s schema declares it Failure/Maintenance-eligible,
+    per ``rule_eligibility.supports_failure``."""
     entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
 
     if entity_schema is None:
@@ -566,6 +688,7 @@ def supports_failure(entity, model_data, schema):
 
 
 def get_failure_eligible_entity_ids(model_data, schema):
+    """Returns the ids of every entity eligible for Failure/Maintenance rules."""
     return [
         entity["id"]
         for entity in model_data["entities"]
@@ -574,14 +697,19 @@ def get_failure_eligible_entity_ids(model_data, schema):
 
 
 def get_failure_parameter(model_data, entity_id, field_name):
+    """Returns ``entity_id``'s current value for one Failure rule field."""
     return get_rule_parameter(model_data, entity_id, "failure", field_name)
 
 
 def set_failure_parameter(model_data, entity_id, field_name, value):
+    """Sets ``entity_id``'s value for one Failure rule field."""
     set_rule_parameter(model_data, entity_id, "failure", field_name, value)
 
 
 def produces_baseline_scrap(entity, model_data, schema):
+    """True if ``entity``'s schema declares it able to produce ``quality``
+    on its own (BaselineScrap-eligible), per
+    ``rule_eligibility.produces_flow_object_states``."""
     entity_schema = schema.get_entity_schema(model_data["domain"], entity["type"])
 
     if entity_schema is None:
@@ -593,6 +721,7 @@ def produces_baseline_scrap(entity, model_data, schema):
 
 
 def get_baseline_scrap_eligible_entity_ids(model_data, schema):
+    """Returns the ids of every entity eligible for a BaselineScrap rule."""
     return [
         entity["id"]
         for entity in model_data["entities"]
@@ -601,22 +730,32 @@ def get_baseline_scrap_eligible_entity_ids(model_data, schema):
 
 
 def get_baseline_scrap_parameter(model_data, entity_id, field_name):
+    """Returns ``entity_id``'s current value for one BaselineScrap rule field."""
     return get_rule_parameter(model_data, entity_id, "baseline_scrap", field_name)
 
 
 def set_baseline_scrap_parameter(model_data, entity_id, field_name, value):
+    """Sets ``entity_id``'s value for one BaselineScrap rule field."""
     set_rule_parameter(model_data, entity_id, "baseline_scrap", field_name, value)
 
 
 def get_maintenance_parameter(model_data, entity_id, field_name):
+    """Returns ``entity_id``'s current value for one Maintenance rule field."""
     return get_rule_parameter(model_data, entity_id, "maintenance", field_name)
 
 
 def set_maintenance_parameter(model_data, entity_id, field_name, value):
+    """Sets ``entity_id``'s value for one Maintenance rule field."""
     set_rule_parameter(model_data, entity_id, "maintenance", field_name, value)
 
 
 def find_maintenance_resource_rule(model_data):
+    """Returns the model-wide MaintenanceResource rule entry, or ``None`` if unset.
+
+    Unlike per-entity rules, this one has no ``"at"`` -- it's keyed by
+    ``"type": "MaintenanceResource"`` instead, since it isn't tied to any
+    single Entity.
+    """
     return next(
         (rule for rule in model_data["rules"] if rule.get("type") == "MaintenanceResource"),
         None,
@@ -624,6 +763,8 @@ def find_maintenance_resource_rule(model_data):
 
 
 def get_maintenance_resource_parameter(model_data, field_name):
+    """Returns the model-wide MaintenanceResource's current value for one
+    field (``capacity`` or ``dispatch_priority``), or ``None`` if unset."""
     rule = find_maintenance_resource_rule(model_data)
 
     if rule is None:
@@ -633,6 +774,8 @@ def get_maintenance_resource_parameter(model_data, field_name):
 
 
 def set_maintenance_resource_parameter(model_data, field_name, value):
+    """Sets the model-wide MaintenanceResource's value for one field,
+    creating the rule entry first if it doesn't exist yet."""
     rule = find_maintenance_resource_rule(model_data)
 
     if rule is None:
@@ -643,6 +786,8 @@ def set_maintenance_resource_parameter(model_data, field_name, value):
 
 
 def get_maintenance_dispatch_priority(model_data, schema):
+    """Returns the model's current dispatch_priority ranking, falling back
+    to the schema's own declared default if unset."""
     dispatch_priority = get_maintenance_resource_parameter(model_data, "dispatch_priority")
 
     if dispatch_priority is not None:
@@ -654,4 +799,8 @@ def get_maintenance_dispatch_priority(model_data, schema):
 
 
 def set_maintenance_dispatch_priority(model_data, ordered_criteria):
+    """Sets the model's dispatch_priority ranking -- must be a permutation
+    of all the schema's allowed criteria (e.g.
+    ``["unplanned_first", "most_worn_first", "fifo"]``), enforced by
+    ``validation.check_property_value``'s ``priority_list`` handling."""
     set_maintenance_resource_parameter(model_data, "dispatch_priority", ordered_criteria)

@@ -1,3 +1,10 @@
+"""The Processing/Inspection behavior layer: starting a timed processing
+cycle (subject to Process Supply and changeover), finishing one and
+resolving where the instance goes next (a real downstream Entity, a
+Storage, a Process Sink, or out of the system), and the proactive
+`retry_upstream` cascade that un-blocks a finished-but-waiting instance as
+soon as its target frees up, instead of waiting for an unrelated event.
+"""
 from dese.constants import END_OF_PROCESS_ROUTING_TARGET
 from dese.core.model import (
     absorbs_flow_objects,
@@ -21,12 +28,28 @@ from dese.engine.routing import evaluate_routing
 
 
 def find_occupied_slot(entity_state, instance_id):
+    """Returns the slot dict currently holding ``instance_id`` (raises if none does)."""
     return next(
         slot for slot in entity_state.slots if slot["flow_object_instance_id"] == instance_id
     )
 
 
 def start_processing(state, entity_id, instance_id, update_status=True):
+    """Attempts to start processing ``instance_id`` (already seated in a slot) at ``entity_id``.
+
+    No-ops (instance stays seated, unstarted) if the Entity is failed/down,
+    or if Process Supply is insufficient -- either way it's picked back up
+    later by ``retry_stalled_slots``. On success, consumes the required
+    Process Supply, applies changeover_time if the slot's previous occupant
+    was a different Flow Object type, and schedules ``finish_processing``.
+
+    Args:
+        state: The mutable SimulationState.
+        entity_id: The Processing/Inspection Entity starting work.
+        instance_id: The Flow Object Instance already seated in one of its slots.
+        update_status: If False, skips recomputing/logging entity status --
+            used only by ``retry_stalled_slots``, see its own docstring.
+    """
     # update_status=False is for retry_stalled_slots only: with capacity >
     # 1, it retries every stalled slot on the same Entity in one pass, and
     # each call succeeding/failing independently would recompute and log
@@ -95,9 +118,13 @@ def start_processing(state, entity_id, instance_id, update_status=True):
 
 
 def retry_stalled_slots(state, entity_id):
-    # Retries every stalled slot silently (update_status=False), then
-    # computes/logs the real, settled outcome exactly once, after every
-    # slot's had its turn -- see start_processing's own comment for why.
+    """Retries every seated-but-unstarted slot at ``entity_id`` (e.g. after
+    a Process Supply replenishment or a repair/maintenance finishing).
+
+    Retries every stalled slot silently (update_status=False), then
+    computes/logs the real, settled outcome exactly once, after every
+    slot's had its turn -- see ``start_processing``'s own docstring for why.
+    """
     for slot in state.entity_states[entity_id].slots:
         instance_id = slot["flow_object_instance_id"]
 
@@ -117,6 +144,9 @@ def retry_stalled_slots(state, entity_id):
 
 
 def get_possible_target_ids(state, entity_id):
+    """Returns every Routing destination ``entity_id`` could send an instance to:
+    its real output relationships, plus the virtual End of Process target
+    if it's marked ``end_of_process``."""
     entity = state.simulation_model.entities_by_id[entity_id]
     target_ids = [
         relationship["target"]
@@ -130,14 +160,26 @@ def get_possible_target_ids(state, entity_id):
 
 
 def try_advance_finished_instance(state, entity_id, instance_id):
-    # Tries to move an instance that's ready to leave entity_id -- either a
-    # just-finished (or previously blocked) slot occupant, or the front of a
-    # Storage's queue (Storage has no "processing" of its own, so anything
-    # sitting there is always ready to move on) -- to its resolved target,
-    # or out of the system (End of Process). Called right when an instance
-    # finishes/enters a Storage, and when retrying a previously-blocked one
-    # (retry_upstream) -- the same resolution/movement logic applies either
-    # way, regardless of whether the source is slot- or queue-based.
+    """Tries to move ``instance_id`` out of ``entity_id`` to its resolved target.
+
+    ``instance_id`` is either a just-finished (or previously blocked) slot
+    occupant, or the front of a Storage's queue (Storage has no
+    "processing" of its own, so anything sitting there is always ready to
+    move on). Resolves the target via Routing (if ``entity_id`` is a
+    decision point) and handles every kind of destination: a real
+    downstream Entity (moves it in if there's room, else marks the source
+    blocked), a Storage (enters its queue), a Process Sink (absorbs it,
+    permanently), or End of Process (completes it). Called right when an
+    instance finishes/enters a Storage, and when retrying a previously-
+    blocked one (``retry_upstream``) -- the same resolution/movement logic
+    applies either way, regardless of whether the source is slot- or
+    queue-based.
+
+    Args:
+        state: The mutable SimulationState.
+        entity_id: The Entity ``instance_id`` is currently at (or queued in).
+        instance_id: The Flow Object Instance ready to move on.
+    """
     entity = state.simulation_model.entities_by_id[entity_id]
     instance = state.flow_object_instances[instance_id]
     entity_state = state.entity_states[entity_id]
@@ -278,11 +320,15 @@ def try_advance_finished_instance(state, entity_id, instance_id):
 
 
 def try_release_from_storage(state, entity_id):
-    # A Storage's front-of-queue item is always ready to move on the instant
-    # its resolved target has room -- there's no processing of its own
-    # gating it. Loops (rather than a single attempt) because releasing one
-    # item can immediately free room for the new front item to also leave,
-    # in the same instant.
+    """Repeatedly tries to advance ``entity_id``'s (a Storage) front-of-queue
+    item, as long as each attempt succeeds.
+
+    A Storage's front-of-queue item is always ready to move on the instant
+    its resolved target has room -- there's no processing of its own
+    gating it. Loops (rather than a single attempt) because releasing one
+    item can immediately free room for the new front item to also leave,
+    in the same instant.
+    """
     storage_queue = state.storage_states[entity_id]
 
     while storage_queue:
@@ -296,6 +342,26 @@ def try_release_from_storage(state, entity_id):
 
 
 def retry_upstream(state, entity_id):
+    """Proactively retries whichever upstream source has the oldest
+    finished-but-blocked (or queued) instance waiting for the slot
+    ``entity_id`` just freed, instead of leaving it stuck until an
+    unrelated event happens to retry it.
+
+    Called right after any slot/queue at ``entity_id`` frees up. Handles
+    the beginning-of-process Entity specially (its "upstream" is
+    ``order_storage``), and otherwise gathers one candidate per real
+    upstream source (a Storage's front item, or a slot-based Entity's
+    oldest finished-but-blocked occupant) and advances only the overall
+    oldest-created one -- the same fairness rule used within a single
+    Entity's own slots, generalized across however many main inputs
+    ``entity_id`` has (a genuine multi-branch merge is schema-valid, since
+    Processing's own input_max is 7).
+
+    Args:
+        state: The mutable SimulationState.
+        entity_id: The Entity (or the beginning-of-process Entity) whose
+            slot/queue just freed up.
+    """
     if entity_id == state.simulation_model.beginning_entity_id:
         # order_storage is beginning_of_process's own "upstream" -- no real
         # Entity to look at instead.
@@ -366,6 +432,20 @@ def retry_upstream(state, entity_id):
 
 
 def handle_finish_processing(state, data):
+    """Event handler for ``"finish_processing"``: closes out one completed
+    processing cycle and tries to move the instance on.
+
+    Applies wear/Failure/Maintenance/BaselineScrap for this cycle (which
+    may mark the instance scrap and/or put the Entity into failed/down --
+    neither affects this already-finished instance moving on normally),
+    logs ``flow_object_exited``, then hands off to
+    ``try_advance_finished_instance``.
+
+    Args:
+        state: The mutable SimulationState.
+        data: ``{"entity_id": ..., "instance_id": ...}``, as scheduled by
+            ``start_processing``.
+    """
     entity_id = data["entity_id"]
     instance_id = data["instance_id"]
 

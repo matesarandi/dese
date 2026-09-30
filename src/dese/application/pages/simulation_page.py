@@ -1,3 +1,7 @@
+"""The Simulation page: a schema-driven run-settings form (Settings tab)
+and a minimal run-summary + CSV export (Results tab) -- the detailed
+analysis happens on the exported CSV, not in this pane.
+"""
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
@@ -86,6 +90,11 @@ class SimulationPage(ttk.Frame):
         self.start_simulation_button.grid(row=0, column=0, sticky="e")
 
     def create_settings_tab(self):
+        """Builds the Settings tab's form, one row per field in the
+        simulation-request schema (an Entry for numeric fields, a
+        read-only Combobox for enum fields like control_strategy) --
+        entirely schema-driven, so a new request field needs no UI code
+        here to appear."""
         # Grid:
         self.settings_tab.columnconfigure(0, weight=1)
 
@@ -183,12 +192,19 @@ class SimulationPage(ttk.Frame):
         self.settings_frame.grid(row=0, column=0, sticky="new")
 
     def commit_field(self, field_name, entry):
+        """Persists one run-settings field's current value via
+        ``on_field_changed`` (DESEApp.set_simulation_request_field_value),
+        so it survives navigating away from this page and back."""
         if self.on_field_changed is not None:
             self.on_field_changed(field_name, entry.get())
 
     def update_results_tab(self):
-        # Rebuilt every time a run finishes (or on first display, when
-        # there's nothing yet) -- clear whatever was there before.
+        """Rebuilds the Results tab's content: either "no results yet", or
+        the last run's summary and an Export CSV button.
+
+        Rebuilt every time a run finishes (or on first display, when
+        there's nothing yet) -- clear whatever was there before.
+        """
         for widget in self.results_tab.winfo_children():
             widget.destroy()
 
@@ -226,6 +242,8 @@ class SimulationPage(ttk.Frame):
         export_button.grid(row=1, column=0, sticky="se", padx=PAD, pady=PAD)
 
     def export_csv(self):
+        """"Export CSV" button handler: writes the last run's event log to
+        a user-chosen path via ``event_log.export_event_log_to_csv``."""
         file_path = filedialog.asksaveasfilename(
             defaultextension=".csv",
             filetypes=[("CSV files", "*.csv")],
@@ -240,6 +258,15 @@ class SimulationPage(ttk.Frame):
         messagebox.showinfo("Export Event Log", f"Event log exported to {file_path}.")
 
     def start_simulation(self):
+        """"Start Simulation" button handler: builds the request/model,
+        runs the simulation, and switches to the Results tab.
+
+        Shows an error dialog (without running anything) if either the
+        request fields or the model itself fail validation -- the latter
+        should be unreachable in practice, since the Simulation nav button
+        is disabled whenever the model has validation issues, but this
+        page can be reached directly in tests/headless use.
+        """
         fields = self.schema.get_simulation_request_schema()["properties"]
         values_by_field_name = {}
 

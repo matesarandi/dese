@@ -1,3 +1,10 @@
+"""SimulationModel: the read-only, resolved view of a validated model_data
+dict that the rest of the engine actually runs against -- entities keyed by
+id, relationships split into input/output and further into "main" (Flow-
+Object-carrying) vs. Process Supply feeds, decision points, and rules, all
+pre-computed once per run by `build_simulation_model` instead of being
+re-derived from model_data on every event.
+"""
 from dataclasses import dataclass
 
 from dese.core.model import (
@@ -11,11 +18,15 @@ from dese.core.validation import validate_model
 
 
 class ModelValidationError(Exception):
-    # Raised instead of building a SimulationModel from an incomplete/invalid
-    # model_data -- carries the same issue list validate_model would show in
-    # the Model Editor, so a caller that bypasses the UI entirely (a script,
-    # a future headless API) still gets the exact same, single source of
-    # truth for "what's wrong", not a second, drifted-apart error path.
+    """Raised by `build_simulation_model` instead of building a SimulationModel
+    from an incomplete/invalid model_data.
+
+    Carries the same issue list ``validate_model`` would show in the Model
+    Editor, so a caller that bypasses the UI entirely (a script, a future
+    headless API) still gets the exact same, single source of truth for
+    "what's wrong", not a second, drifted-apart error path.
+    """
+
     def __init__(self, issues):
         self.issues = issues
         super().__init__(
@@ -25,6 +36,10 @@ class ModelValidationError(Exception):
 
 @dataclass
 class SimulationModel:
+    """The resolved, run-ready view of a model -- everything
+    `build_simulation_model` precomputes once so the event loop never has
+    to re-derive it per event."""
+
     domain: str
     schema: object
     entities_by_id: dict
@@ -39,6 +54,19 @@ class SimulationModel:
 
 
 def build_simulation_model(model_data, schema):
+    """Validates ``model_data`` and builds the SimulationModel the engine runs against.
+
+    Args:
+        model_data: The full model dict (entities, relationships, flow
+            objects, rules) as produced by the Model Editor.
+        schema: The loaded SchemaLoader.
+
+    Returns:
+        SimulationModel: the resolved, run-ready view.
+
+    Raises:
+        ModelValidationError: if ``model_data`` fails ``validate_model``.
+    """
     issues = validate_model(model_data, schema)
 
     if issues:
@@ -46,15 +74,16 @@ def build_simulation_model(model_data, schema):
 
     entities_by_id = {entity["id"]: entity for entity in model_data["entities"]}
 
-    # Main-entity-only (excludes Process Supply feeds) -- this is used
-    # exclusively by processing.retry_upstream to find "the one real
-    # upstream Entity whose finished-but-blocked item might want to move
-    # into a slot that just freed up". A Process Supply relationship
-    # carries material, not Flow Objects, so it must not count as a second
-    # "upstream" -- otherwise retry_upstream's len(...) != 1 guard bails out
-    # for every Entity that has process_requirements configured (i.e. most
-    # real models), silently breaking the whole proactive un-blocking
-    # cascade beyond one hop.
+    # Main-entity-only (excludes Process Supply feeds) -- this is what
+    # processing.retry_upstream uses to find every real upstream Entity
+    # whose finished-but-blocked items might want to move into a slot that
+    # just freed up. A Process Supply relationship carries material, not
+    # Flow Objects, so it must not count as an "upstream" here -- retry_upstream
+    # now correctly handles any number of main upstream sources (a genuine
+    # merge topology, e.g. two branches feeding one downstream Processing
+    # entity, is schema-valid since Processing's input_max is 7), picking
+    # the oldest-created candidate across all of them; only Process Supply
+    # feeds are excluded from this count, not real multi-input merges.
     input_relationships_by_id = {
         entity_id: get_main_entity_input_relationships(entity_id, model_data, schema)
         for entity_id in entities_by_id

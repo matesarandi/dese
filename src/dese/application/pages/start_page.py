@@ -1,3 +1,6 @@
+"""The Start page: open an existing model file or create a new one from
+the empty model template, then hand off to the Model Editor.
+"""
 import json
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -24,6 +27,7 @@ class StartPage(ttk.Frame):
     # ==========================
 
     def edit_model(self):
+        """"Edit" button handler: opens the currently selected existing model."""
         if self.selected_model_path is None:
             messagebox.showwarning("No model selected", "Please select a model first.")
             return
@@ -31,6 +35,7 @@ class StartPage(ttk.Frame):
         self.activate_model_callback(self.selected_model_path)
 
     def continue_new_model(self):
+        """"Continue" button handler: opens the just-created new model."""
         if self.new_model_path is None:
             messagebox.showwarning("No model created", "Please create a model first.")
             return
@@ -38,6 +43,8 @@ class StartPage(ttk.Frame):
         self.activate_model_callback(self.new_model_path)
 
     def open_model_button_clicked(self):
+        """"Open" button handler: shows a file picker and records the chosen
+        existing model file as selected (doesn't open it yet -- that's "Edit")."""
         file_path = filedialog.askopenfilename(
             title="Open Existing Model",
             filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
@@ -49,6 +56,9 @@ class StartPage(ttk.Frame):
             self.select_model_callback(model_path)
 
     def create_new_model(self):
+        """"Create" button handler: writes a new model file from the empty
+        template, stamped with the current schema version/default domain,
+        to a user-chosen path (doesn't open it yet -- that's "Continue")."""
         save_path = filedialog.asksaveasfilename(
             title="Create New Model",
             defaultextension=".json",

@@ -1,3 +1,8 @@
+"""The Flow Object Editor: a standalone popup window listing the model's
+Flow Object types and, for the selected one, its own properties plus its
+Process Requirements (how much material it consumes from each Process
+Supply feeding each Processing entity it can enter).
+"""
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -37,12 +42,15 @@ class FlowObjectEditor:
     # ==========================
 
     def is_flow_object_name_unique(self, flow_object, name):
+        """True if no OTHER Flow Object type already uses ``name``."""
         return all(
             other_flow_object is flow_object or other_flow_object["name"] != name
             for other_flow_object in self.model_data["flow_objects"]
         )
 
     def validate_flow_object_name(self, flow_object, name, variable):
+        """Name Entry commit handler: applies the rename if unique, else
+        reverts the field and warns."""
         if not self.is_flow_object_name_unique(flow_object, name):
             messagebox.showwarning("Duplicate name", "Cannot use the same name.")
 
@@ -53,6 +61,9 @@ class FlowObjectEditor:
         return True
 
     def add_flow_object(self):
+        """"Add" button handler: creates a new Flow Object type (auto-named
+        "Flow Object N"), with every schema property initialized to
+        ``None`` and no process requirements yet, and selects it."""
         flow_object_schema = self.schema.get_flow_object_schema()
 
         flow_object = {}
@@ -90,6 +101,8 @@ class FlowObjectEditor:
         self.flow_object_listbox.selection_set(tk.END)
 
     def select_flow_object(self, event=None):
+        """Flow Object listbox selection handler: displays the selected
+        type's editor on the right."""
         selected_index = self.flow_object_listbox.curselection()
 
         if not selected_index:
@@ -102,6 +115,15 @@ class FlowObjectEditor:
     def update_flow_object_property(
         self, flow_object, property_name, value, property_type
     ):
+        """Converts and stores one value directly on ``flow_object`` (the
+        dict passed in, NOT necessarily the whole Flow Object -- callers
+        pass the Flow Object itself for its "required" properties like
+        ``name``, but its ``["properties"]`` sub-dict for everything else;
+        see ``commit_property_value``'s ``container`` argument).
+
+        Renaming (``property_name == "name"``) also updates the listbox
+        entry in place.
+        """
         value = convert_property_value(value, property_type)
 
         flow_object[property_name] = value
@@ -120,6 +142,10 @@ class FlowObjectEditor:
         self.update_model_changed_state()
 
     def commit_property_value(self, container, property_name, property_type, variable):
+        """Property Entry commit handler (via its StringVar): applies the
+        entered value onto ``container`` (the Flow Object itself for
+        required properties, or its ``properties`` sub-dict for the rest),
+        then re-syncs the variable from what was actually stored."""
         self.update_flow_object_property(
             container, property_name, variable.get(), property_type
         )
@@ -129,6 +155,9 @@ class FlowObjectEditor:
     def commit_process_requirement(
         self, flow_object, processing_entity_id, process_supply_entity_id, variable
     ):
+        """Process-requirement quantity Entry commit handler: stores how
+        much of ``process_supply_entity_id``'s material one cycle of
+        ``flow_object`` at ``processing_entity_id`` consumes."""
         new_value = convert_property_value(variable.get(), NUMBER_PROPERTY_TYPE)
 
         flow_object["process_requirements"].setdefault(processing_entity_id, {})[
@@ -140,6 +169,9 @@ class FlowObjectEditor:
         self.update_model_changed_state()
 
     def get_processing_entities(self):
+        """Returns every entity that can accept Flow Object entry
+        (Processing/Inspection) -- these are what the Process Requirements
+        section lists."""
         return [
             entity
             for entity in self.model_data["entities"]
@@ -147,6 +179,10 @@ class FlowObjectEditor:
         ]
 
     def display_flow_object_properties(self, flow_object):
+        """Rebuilds the right-hand editor panel for ``flow_object``: its
+        required/own properties, then a Process Requirements section with
+        one quantity field per (Processing entity, Process Supply feeding
+        it) pair -- entirely schema- and model-driven."""
         for widget in self.right_content_frame.winfo_children():
             widget.destroy()
 
@@ -222,12 +258,12 @@ class FlowObjectEditor:
 
         row += 1
 
-        # Separator widget bw. sections:
+        # Separator widget between sections:
         section_separator = ttk.Separator(
             flow_object_properties_frame, orient="horizontal"
         )
 
-        # Display separator widget bw. sections:
+        # Display separator widget between sections:
         section_separator.grid(
             row=row,
             column=0,
@@ -525,12 +561,15 @@ class FlowObjectEditor:
         bind_canvas_mousewheel(self.right_canvas)
 
     def load_flow_objects(self):
+        """Populates the Flow Object listbox from ``model_data`` (called once, on open)."""
         self.flow_object_listbox.delete(0, tk.END)
 
         for flow_object in self.model_data["flow_objects"]:
             self.flow_object_listbox.insert(tk.END, flow_object["name"])
 
     def delete_flow_object(self):
+        """"Delete" button handler: removes the selected Flow Object type
+        and clears the editor panel."""
         selected_index = self.flow_object_listbox.curselection()
 
         if not selected_index:
