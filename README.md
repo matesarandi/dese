@@ -81,7 +81,6 @@ dese/
     schemas/          # schema.json
     templates/        # empty_model.json
   docs/               # Sphinx documentation source (see docs link above)
-  tests/              # pytest suite (planned, not yet written)
   .github/workflows/  # CI: auto-builds & publishes docs on push to main
 ```
 
@@ -99,8 +98,7 @@ python3 -m dese.application.gui
 
 ## Testing
 
-There's no committed pytest suite yet. See `tests/README.md`, which notes it
-as planned but not yet built. What testing has actually happened so far:
+There's no automated test suite. What testing has actually happened so far:
 
 - Hand-built models exercising every routing/maintenance/quality feature,
   run end-to-end through the real GUI.
