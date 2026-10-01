@@ -3,11 +3,4 @@ __pycache__/
 .DS_Store
 .claude/
 docs/build/
-audit/01-hardcoded.md
-audit/03-complexity.md
-audit/04-architecture.md
-audit/05-maintainability.md
-audit/06-configuration.md
-audit/07-roadmap.md
-audit/08-kpi-definitions.md
 .gitignore
