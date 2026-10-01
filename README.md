@@ -24,13 +24,16 @@ tools in one real, working thing, as it is a demo piece. See
 
 ## Screenshots
 
-**Model Editor — Structure tab**: entities and their relationships.
+**Model Editor — Structure tab**: entities, their properties, and
+relationships.
 ![Model Editor — Structure tab](assets/screenshots/model-editor-structure.png)
 
-**Model Editor — Rules tab**: routing, failure, and maintenance rules.
+**Model Editor — Rules tab**: routing, failure, maintenance, and baseline
+scrap rules.
 ![Model Editor — Rules tab](assets/screenshots/model-editor-rules.png)
 
-**Flow Objects**: Flow Object types and their process requirements.
+**Flow Objects**: Flow Object types, their generation settings, and process
+requirements.
 ![Flow Objects](assets/screenshots/flow-objects.png)
 
 **Simulation — Results tab**: a completed run's summary and CSV export.
@@ -54,10 +57,9 @@ mind quantitative methods for decision-making, mathematical and optimization
 modeling, probability, proper discrete-event simulation tooling, and machine
 learning. The first plan was sketched out in a word processor. From there,
 looking into the most actively researched areas in the field pointed me
-toward digital twins and decision support. This became a digital-twin builder
-with a (currently minimal) decision-support layer on top. That felt closer to
-a real industry problem than another isolated exercise with no real context
-or use beyond the exercise itself.
+toward digital twins and decision support. This became a digital-twin
+builder, which felt closer to a real industry problem than another isolated
+exercise with no real context or use beyond the exercise itself.
 
 The first ~2600 lines were written by hand in VS Code, with minimal
 assistance from ChatGPT, to push past smaller Python automation tasks into
