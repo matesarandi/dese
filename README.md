@@ -1,4 +1,4 @@
-# DESE — Discrete Event Simulation Engine
+# DESE - Discrete Event Simulation Engine
 
 📖 [Documentation](https://matesarandi.github.io/dese/)
 
